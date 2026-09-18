@@ -19,6 +19,16 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
+/**
+ * What the deployed site is served under — "" locally, the repo name on Pages.
+ *
+ * `next/image` prefixes basePath itself for an optimised image, but not for an
+ * `unoptimized` one: the src is passed through as written. On Pages that made
+ * the logo a request to /images/logo.png at the domain root, one level above
+ * the site, and the only broken asset on the page.
+ */
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
 /** Bloocks TopNav styling with the prototype's company and sync actions. */
 
 export type Crumb = string;
@@ -95,7 +105,7 @@ const AppTopBar = ({
               was serving a 128px-wide variant for this 121px box, which is
               soft at 2x. Unoptimised, the browser downsamples the full 272px. */}
           <Image
-            src="/images/logo.png"
+            src={`${basePath}/images/logo.png`}
             alt="AI Accountant"
             width={121}
             height={24}
