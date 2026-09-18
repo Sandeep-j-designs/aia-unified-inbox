@@ -1,0 +1,226 @@
+.root {
+  padding: 8px 22px 20px;
+  overflow: hidden;
+  border: 1px solid #e1e7f6;
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse at 50% 20%, #edf1ff, transparent 65%),
+    linear-gradient(145deg, #f9faff, #fff);
+}
+.scene {
+  height: 156px;
+  position: relative;
+  width: min(340px, 100%);
+  margin: 0 auto;
+  isolation: isolate;
+}
+.halo {
+  position: absolute;
+  inset: 20px 12px;
+  border: 1px solid #e0e7fa;
+  border-radius: 50%;
+  transform: rotate(-10deg);
+  z-index: -1;
+}
+.halo::after {
+  content: "";
+  position: absolute;
+  inset: 15px;
+  border: 1px dashed #dde5f7;
+  border-radius: 50%;
+}
+.source {
+  position: absolute;
+  left: 26px;
+  top: 30px;
+  width: 67px;
+  height: 86px;
+  transform: rotate(-9deg);
+}
+.sheet,
+.backSheet {
+  position: absolute;
+  inset: 0;
+  border: 1px solid #d9e2f6;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 8px 16px -10px #6177b555;
+}
+.backSheet {
+  transform: translate(-7px, -4px) rotate(-8deg);
+  background: #f3f6ff;
+}
+.sheet {
+  padding: 11px;
+  color: #8295c7;
+}
+.sheet i {
+  display: block;
+  margin-top: 8px;
+  height: 3px;
+  border-radius: 2px;
+  background: #e6ebf5;
+}
+.sheet i + i {
+  margin-top: 4px;
+  width: 70%;
+}
+.sheet > span {
+  display: block;
+  font-size: 5px;
+  letter-spacing: 0.7px;
+  margin-top: 8px;
+}
+.destination {
+  position: absolute;
+  right: 27px;
+  top: 46px;
+  width: 66px;
+  height: 62px;
+  border: 1px solid #8093ed;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #8a9eff, #5267dc);
+  display: grid;
+  place-items: center;
+  color: white;
+  box-shadow:
+    inset 0 2px 2px #ffffff66,
+    0 10px 24px -9px #6274d975,
+    0 0 0 6px #ffffffaa;
+  transition:
+    background 500ms,
+    border-color 500ms;
+}
+.badge {
+  position: absolute;
+  right: -7px;
+  bottom: -5px;
+  width: 23px;
+  height: 23px;
+  border: 3px solid white;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #ba8a39;
+}
+.root[data-success="true"] .badge {
+  background: #48a483;
+}
+.root[data-success="true"] .destination {
+  background: linear-gradient(145deg, #71bda4, #39937b);
+  border-color: #82bfae;
+}
+.route {
+  position: absolute;
+  left: 36%;
+  right: 33%;
+  top: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #bcc9ed;
+}
+.route > span {
+  height: 3px;
+  width: 3px;
+  background: #bcc9ed;
+  border-radius: 50%;
+}
+.traveling {
+  position: absolute;
+  top: 58px;
+  left: 28%;
+  padding: 6px;
+  border: 1px solid #dce3f8;
+  background: white;
+  color: #7187d8;
+  border-radius: 6px;
+  opacity: 0;
+}
+.root[data-active="true"] .traveling {
+  animation: transfer 1.8s cubic-bezier(0.3, 0.1, 0.4, 1) infinite;
+}
+.summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.summary strong {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.8px;
+  color: #293853;
+  font-variant-numeric: tabular-nums;
+}
+.summary strong > span {
+  color: #94a0b7;
+  font-size: 16px;
+  font-weight: 400;
+}
+.label,
+.status {
+  font-size: 10px;
+  color: #8590a6;
+}
+.status {
+  text-align: right;
+}
+.track {
+  margin-top: 12px;
+  height: 4px;
+  border-radius: 4px;
+  background: #e9edf8;
+  overflow: hidden;
+}
+.track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #586fe2, #91a8fa);
+  transition: width 300ms ease;
+}
+.root[data-success="true"] .track > span {
+  background: #67ae96;
+}
+@keyframes transfer {
+  0% {
+    opacity: 0;
+    transform: translate(-12px, 5px) rotate(-10deg) scale(0.8);
+  }
+  20% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(105px, 0) rotate(5deg) scale(0.65);
+  }
+}
+@media (max-width: 480px) {
+  .root {
+    padding-inline: 16px;
+  }
+  .summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .status {
+    text-align: left;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .root *,
+  .root *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

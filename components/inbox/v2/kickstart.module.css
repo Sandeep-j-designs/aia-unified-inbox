@@ -1,0 +1,1635 @@
+.root {
+  --ink: #172339;
+  --muted-ink: #677489;
+  --blue: #4059e8;
+  width: 100%;
+  /* The page gutter, not a gutter of its own: the empty state is a band on the
+     Inbox page like the title bar and the table, so it lines up on the same
+     edge its "Inbox" title does — workspace.tsx's `kickstartGutter` (40px).
+     A 48px pad plus `margin: 0 auto` put this section's content 40px right of
+     that title, and the offset moved with the viewport, so it never lined up
+     at any width. */
+  padding: clamp(16px, 3vh, 32px) 56px 32px;
+  /* Nothing follows the cards, so the block rides the middle of the page
+     rather than hanging off the top with the slack pooled underneath. `safe`
+     keeps the top reachable when the viewport is shorter than the content. */
+  /* Centred by auto margins rather than by stretching to the scroller: the
+     block keeps its own height, so the two panes size to their content and
+     the list doesn't inflate to fill the viewport. */
+  box-sizing: border-box;
+  margin-block: auto;
+  color: var(--ink);
+}
+/* Two panes side by side: what the Inbox is on the left, what to do about it
+   on the right. The channels are a stacked list rather than a card row, so the
+   right pane reads as one column of actions instead of three tiles. */
+.split {
+  display: grid;
+  /* Equal columns, equal heights: the demo card and the channel list are the
+     two halves of the same block and end on the same line. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: clamp(36px, 4vw, 64px);
+}
+.pitch {
+  display: flex;
+  flex-direction: column;
+  /* Intro at the top, card at the bottom: when the channel list is the taller
+     pane, the slack falls between them instead of inflating the card. */
+  justify-content: space-between;
+  gap: 32px;
+  min-width: 0;
+}
+.intake {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.intro {
+  min-width: 0;
+}
+.intro h2 {
+  max-width: 420px;
+  margin: 0 0 20px;
+  font-size: clamp(28px, 2.6vw, 38px);
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: -1.2px;
+  text-wrap: balance;
+}
+.intro h2 > span {
+  display: block;
+  color: var(--blue);
+}
+.intro > p {
+  max-width: 400px;
+  color: var(--muted-ink);
+  font-size: 17px;
+  line-height: 1.7;
+}
+.passes {
+  display: grid;
+  gap: 10px;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.passes li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #52627a;
+}
+.passes svg {
+  flex-shrink: 0;
+  color: var(--blue);
+}
+.demo {
+  min-width: 0;
+  /* Sits at the bottom of its pane (see .pitch) so the card's bottom edge
+     lands on the last channel row's, at its own height — never stretched. */
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 24px 20px;
+  border-radius: 16px;
+  border: 1px solid #e1e6ef;
+  background: #fff;
+  box-shadow: 0 6px 24px -16px #24396125;
+  color: var(--ink);
+}
+.demoTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.demoTop > span {
+  font-weight: 600;
+  color: var(--ink);
+}
+.demoTop button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid #e1e6ef;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #677489;
+  background: #fff;
+  transition: background 180ms;
+}
+.demoTop button:hover {
+  background: #f6f8fc;
+}
+.flow {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 16px;
+  margin: 18px 0 20px;
+}
+.detailTray {
+  display: grid;
+  height: 26px;
+  align-items: center;
+}
+/* Flush left with "How it works" and the entry row — centred, the chip row and
+   the step rail were the only two things in the card on a different axis. */
+.documents,
+.fields {
+  grid-area: 1 / 1;
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+  transition:
+    opacity 400ms,
+    transform 550ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.documents[data-visible="false"] {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+}
+.fields[data-visible="false"] {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.documentChip,
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 18px;
+  background: #f6f8fc;
+  border: 1px solid #e1e6ef;
+  color: #52657f;
+}
+.field {
+  background: #edf1ff;
+  border-color: #d9e1fc;
+  color: #4059e8;
+}
+.demo[data-step="1"] .field {
+  animation: captureField 1.1s both;
+  animation-delay: calc(0.3s + var(--index) * 0.75s);
+}
+.demo[data-step="1"] .field svg {
+  animation: drawField 0.5s both;
+  animation-delay: calc(0.8s + var(--index) * 0.75s);
+}
+.entry {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 68px;
+  width: 100%;
+  padding: 14px 18px;
+  background: #fff;
+  border: 1px solid #e1e7f0;
+  border-radius: 11px;
+  color: var(--ink);
+  box-shadow: 0 6px 18px #2439610c;
+  transition:
+    transform 850ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 700ms,
+    box-shadow 700ms;
+}
+.entryIcon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: #edf1ff;
+  color: var(--blue);
+  transition:
+    color 700ms,
+    background 700ms;
+}
+.entryBody {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.entryTitle {
+  font-size: 13px;
+  font-weight: 600;
+}
+.entryDetail {
+  color: #768195;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.entryStatus {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: 64px;
+  margin-left: auto;
+}
+.ready {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  border: 1px solid #cceadf;
+  border-radius: 5px;
+  background: #eaf7f1;
+  color: #237556;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  transform: translateX(4px);
+  transition:
+    opacity 600ms,
+    transform 600ms;
+}
+.ready[data-visible="true"] {
+  opacity: 1;
+  transform: translateX(0);
+}
+.ready svg path,
+.ready svg polyline {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  transition: stroke-dashoffset 600ms 250ms;
+}
+.ready[data-visible="true"] svg path,
+.ready[data-visible="true"] svg polyline {
+  stroke-dashoffset: 0;
+}
+.processing {
+  grid-area: 1 / 1;
+  display: flex;
+  color: var(--blue);
+  opacity: 0;
+  transition: opacity 250ms;
+}
+.processing[data-visible="true"] {
+  opacity: 1;
+}
+.processing svg {
+  animation: turn 2s linear infinite;
+}
+.processingRing {
+  position: absolute;
+  inset: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  fill: none;
+  stroke: #7794ff;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  /* 154 is the rounded rect's perimeter (4 × 18 straight + 2πr at r=13, the
+     tile's 9px radius plus the 4px the ring sits outside it). The
+     segment travels the outline instead of the whole ring rotating, which is
+     what made a square tile look like it had a sphere spinning behind it. */
+  stroke-dasharray: 40 114;
+  opacity: 0;
+}
+.demo[data-step="1"] .processingRing {
+  opacity: 1;
+  animation: trace 2.4s linear infinite;
+}
+.processingTrack {
+  position: absolute;
+  bottom: 0;
+  left: 10px;
+  right: 10px;
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  opacity: 0;
+  background: #e9edff;
+  transition: opacity 350ms;
+}
+.processingTrack i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #4059e8, #7cafff);
+  transform-origin: left;
+}
+.demo[data-step="1"] .processingTrack {
+  opacity: 1;
+}
+.demo[data-step="1"] .processingTrack i {
+  animation: prepareProgress 3.6s cubic-bezier(0.2, 0.5, 0.4, 1) both;
+}
+.demo[data-step="1"] .entry {
+  border-color: #a4b8ff;
+  box-shadow:
+    0 0 0 4px #8eabff14,
+    0 6px 18px #2439610c;
+}
+.demo[data-step="2"] .entry {
+  transform: translateY(-16px);
+  border-color: #b9e2d2;
+}
+.demo[data-step="2"] .entryIcon {
+  background: #e6f5ed;
+  color: #278265;
+}
+.process {
+  display: flex;
+  justify-content: flex-start;
+  border-top: 1px solid #edf0f5;
+  padding-top: 16px;
+}
+.process button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 2px 0;
+  color: #677489;
+  font-size: 12px;
+  transition: color 300ms;
+}
+.process button[aria-pressed="true"] {
+  color: var(--blue);
+}
+.process button + button::before {
+  content: "";
+  width: 24px;
+  height: 1px;
+  margin: 0 10px;
+  background: #dce3ef;
+}
+.stepMarker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #dce3ef;
+  border-radius: 50%;
+  color: #677489;
+  font-size: 11px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.stepMarker > svg {
+  display: block;
+  flex-shrink: 0;
+}
+.process button[aria-pressed="true"] .stepMarker {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+  box-shadow: 0 0 0 4px #a9c1ff12;
+}
+.process button[data-complete="true"] .stepMarker {
+  background: #edf1ff;
+  border-color: #dce3ef;
+  color: var(--blue);
+}
+.intakeHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.intakeHeading h3 {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+}
+.intakeHeading > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #7a8597;
+}
+.intakeHeading strong {
+  color: #45536b;
+  font-weight: 500;
+}
+/* One stacked list of channels, each row: icon · what it is · how to use it.
+   The rows share the slack so the list ends level with the demo card. */
+.channels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: 1fr;
+  flex: 1;
+  gap: 14px;
+  /* The rows reflow off the pane's width, not the page's — the pane is roughly
+     half the content area, so a page-width breakpoint reads it wrong. */
+  container-type: inline-size;
+}
+.channel {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(150px, 1fr) minmax(224px, 296px);
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid #e1e6ef;
+  border-radius: 10px;
+  background: #fff;
+  transition:
+    border-color 200ms,
+    box-shadow 200ms,
+    background 200ms;
+}
+.channel:hover,
+.channel:focus-within {
+  border-color: #bcc9e5;
+  box-shadow: 0 6px 20px -12px #24396130;
+}
+/* Title and body share one edge; the icon sits in its own column beside them,
+   so nothing inside a row is indented off a second margin. */
+/* Narrow pane: the action drops under the text instead of squeezing it. */
+@container (max-width: 540px) {
+  .channel {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px 16px;
+  }
+  .channelAction {
+    grid-column: 2;
+  }
+}
+.channelText {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.channelAction {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.channelIcon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: 1px solid #e1e7f0;
+  border-radius: 8px;
+  background: #f6f8fc;
+  color: #52657f;
+}
+.channelIcon svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.6;
+  transition: transform 250ms;
+}
+.channel h4 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.channelText p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted-ink);
+}
+.upload {
+  background: #fafbff;
+}
+.upload .channelIcon {
+  background: #edf1ff;
+  border-color: #dde5fa;
+  color: var(--blue);
+}
+.upload:hover,
+.dragging {
+  border-color: #9baaf0;
+  background: #f6f8ff;
+}
+.upload:hover .channelIcon svg {
+  transform: translateY(-2px);
+}
+.uploadButton,
+.whatsappButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 36px;
+  height: auto;
+  padding: 8px 12px;
+  gap: 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.uploadButton {
+  justify-content: flex-start;
+  background: var(--blue);
+  border: 1px solid #3a51d7;
+  color: #fff;
+  box-shadow: 0 2px 4px #4059e818;
+}
+.uploadButton:hover {
+  background: #3048d4;
+}
+.uploadButton svg:last-child {
+  margin-left: auto;
+}
+.fileHint {
+  display: block;
+  font-size: 12px;
+  color: #768195;
+  line-height: 1.6;
+  margin: 0;
+}
+.emailAddress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 3px 5px 3px 11px;
+  border: 1px solid #e2e7f0;
+  border-radius: 6px;
+  background: #f7f9fc;
+}
+.emailAddress code {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+  color: #455c94;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.emailAddress button {
+  flex-shrink: 0;
+  color: #617397;
+}
+.email:hover .channelIcon svg {
+  transform: translateX(2px);
+}
+.whatsapp .channelIcon {
+  background: #eef8f2;
+  border-color: #dbeee3;
+  color: #31835b;
+}
+.whatsappButton {
+  background: #f2f8f5;
+  border: 1px solid #e0eee5;
+  color: #2c7656;
+}
+.whatsappButton svg {
+  flex-shrink: 0;
+}
+.whatsappButton:hover {
+  background: #eaf4ee;
+  color: #1b6342;
+}
+.dropHint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  border: 2px dashed var(--blue);
+  border-radius: 12px;
+  background: #f0f4fffa;
+  color: var(--blue);
+  pointer-events: none;
+}
+.dropHint strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+.root button:focus-visible {
+  outline: 2px solid #718eff;
+  outline-offset: 4px;
+}
+.demo[data-playing="false"] .processing svg,
+.demo[data-playing="false"] .processingRing,
+.demo[data-playing="false"] .processingTrack i,
+.demo[data-playing="false"] .field,
+.demo[data-playing="false"] .field svg {
+  animation-play-state: paused;
+}
+@keyframes turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes trace {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -154;
+  }
+}
+@keyframes captureField {
+  from {
+    opacity: 0.35;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes drawField {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes prepareProgress {
+  0% {
+    transform: scaleX(0);
+  }
+  30% {
+    transform: scaleX(0.3);
+  }
+  65% {
+    transform: scaleX(0.68);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+@media (min-width: 851px) and (max-height: 800px) {
+  .root {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+  .intro h2 {
+    font-size: 30px;
+    margin-bottom: 14px;
+  }
+  .intakeHeading {
+    margin-bottom: 12px;
+  }
+  /* The left pane sets the block's height — the channel rows stretch to it —
+     so a short viewport is won back here, not in the list. */
+  .demo {
+    margin-top: 16px;
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+  .flow {
+    margin-top: 14px;
+    margin-bottom: 14px;
+    gap: 14px;
+  }
+  .entry {
+    min-height: 62px;
+  }
+  .process {
+    padding-top: 12px;
+  }
+  .channel {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+  .channels {
+    gap: 10px;
+  }
+}
+/* Below this the two panes start squeezing each other — the entry row and the
+   intake heading wrap — so the split stacks instead. */
+@media (max-width: 1150px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 44px;
+  }
+  /* Stacked, there is no second pane to match — rows go back to their own
+     height instead of stretching. */
+  .channels {
+    grid-auto-rows: auto;
+    flex: none;
+  }
+  .intro h2 {
+    font-size: 32px;
+    letter-spacing: -1.2px;
+    max-width: none;
+  }
+  .demo {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .process button + button::before {
+    width: 14px;
+    margin: 0 6px;
+  }
+}
+@media (max-width: 850px) {
+  .root {
+    padding: 24px;
+  }
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 48px;
+  }
+  .intro h2 {
+    max-width: none;
+    font-size: clamp(28px, 5.5vw, 36px);
+  }
+  .intro > p {
+    max-width: 460px;
+  }
+  .demo {
+    padding: 20px;
+  }
+  .intakeHeading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .intakeHeading > span {
+    flex-wrap: wrap;
+  }
+  /* Phone: the row's three columns stack — icon, then text, then the action
+     across the full width. */
+  .channel {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px;
+  }
+  .channelAction {
+    grid-column: 1;
+  }
+}
+@media (max-width: 380px) {
+  .root {
+    padding: 20px 14px;
+  }
+  .demo {
+    padding: 16px 12px;
+  }
+  .entry {
+    gap: 8px;
+    padding: 12px 10px;
+  }
+  .entryIcon {
+    width: 32px;
+    height: 38px;
+  }
+  .entryTitle {
+    font-size: 13px;
+  }
+  .process button {
+    gap: 5px;
+  }
+  .process button + button::before {
+    width: 8px;
+    margin: 0 4px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .root *,
+  .root *::before,
+  .root *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+  .processingRing {
+    display: none;
+  }
+}
+
+/* Illustrated welcome experience. */
+.root {
+  max-width: 1560px;
+  margin-inline: auto;
+  padding: 32px 56px;
+}
+.split {
+  gap: clamp(40px, 5vw, 80px);
+  align-items: center;
+}
+.pitch {
+  gap: 26px;
+}
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  color: #65749a;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 1.8px;
+}
+.eyebrow > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #687bee;
+  box-shadow: 0 0 0 4px #eef0ff;
+}
+.intro h2 {
+  max-width: 560px;
+  font-size: clamp(32px, 2.7vw, 44px);
+  letter-spacing: -1.6px;
+  margin-bottom: 14px;
+}
+.intro > p {
+  max-width: 470px;
+  font-size: 15px;
+  line-height: 1.75;
+}
+.passes {
+  gap: 7px;
+  margin-top: 18px;
+}
+.passes li {
+  font-size: 12px;
+}
+.demo {
+  position: relative;
+  overflow: hidden;
+  padding: 18px 22px;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #f7f9ff, #fff 70%);
+  box-shadow: 0 12px 36px -22px #4d62a845;
+}
+.demoTop {
+  position: relative;
+  z-index: 1;
+}
+.illustration {
+  position: relative;
+  height: 175px;
+  margin: 0 -10px;
+  overflow: hidden;
+  isolation: isolate;
+}
+.orbit,
+.orbitInner {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  width: 360px;
+  height: 160px;
+  border: 1px solid #e1e7fb;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) rotate(-12deg);
+  z-index: -1;
+}
+.orbit {
+  background: radial-gradient(ellipse, #e3eaff80, transparent 70%);
+}
+.orbitInner {
+  width: 260px;
+  height: 114px;
+  transform: translate(-50%, -50%) rotate(-12deg);
+  border-style: dashed;
+}
+.connections {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  stroke: #b6c4ef;
+  stroke-width: 1.4;
+  stroke-dasharray: 4 5;
+}
+.paper {
+  position: absolute;
+  top: 24px;
+  width: 94px;
+  height: 112px;
+  padding: 13px 11px;
+  background: linear-gradient(135deg, #fff, #fbfcff);
+  border: 1px solid #dce3f4;
+  border-radius: 9px;
+  box-shadow: 0 9px 20px -10px #586fa94d;
+}
+.paperLeft {
+  left: calc(50% - 177px);
+  transform: rotate(-13deg);
+}
+.paperRight {
+  right: calc(50% - 177px);
+  top: 18px;
+  transform: rotate(12deg);
+}
+.paperLabel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #7383ab;
+  font-size: 8px;
+  font-weight: 650;
+  letter-spacing: 0.7px;
+}
+.paper i {
+  display: block;
+  height: 4px;
+  margin-top: 11px;
+  background: #e7ecf6;
+  border-radius: 3px;
+}
+.paper i + i {
+  width: 70%;
+  margin-top: 6px;
+}
+.paperTotal {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 13px;
+  font-size: 11px;
+  font-weight: 650;
+  color: #526389;
+}
+.paperTotal svg {
+  color: #38a07d;
+}
+.paperRows {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+  margin-top: 10px;
+}
+.paperRows b {
+  height: 13px;
+  width: 14px;
+  background: #dbe3ff;
+  border-radius: 2px;
+}
+.paperRows b:nth-child(2) {
+  height: 20px;
+  background: #b9c8ff;
+}
+.paperRows b:nth-child(3) {
+  height: 16px;
+  background: #8da5f6;
+}
+.sparkleTile {
+  position: absolute;
+  top: 8px;
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: #7b7de5;
+  border: 1px solid #e0dffd;
+  background: #f1efff;
+  border-radius: 11px;
+  transform: rotate(8deg);
+}
+.inboxTile {
+  position: absolute;
+  top: 61px;
+  left: calc(50% - 41px);
+  width: 82px;
+  height: 75px;
+  display: grid;
+  place-items: center;
+  color: white;
+  border-radius: 21px;
+  border: 1px solid #788bf5;
+  background: linear-gradient(145deg, #8297ff, #4d62db 75%);
+  box-shadow:
+    inset 0 2px 2px #ffffff55,
+    0 12px 24px -6px #596fe966,
+    0 0 0 7px #ffffffa6;
+  transform: rotate(-5deg);
+}
+.verified {
+  position: absolute;
+  right: -6px;
+  bottom: -5px;
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border: 3px solid white;
+  border-radius: 50%;
+  background: #49aa87;
+}
+.graphicCaption {
+  position: absolute;
+  bottom: 6px;
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: #8894af;
+}
+.starOne,
+.starTwo {
+  position: absolute;
+  color: #a1b2f0;
+  top: 22px;
+  left: 18%;
+  font-size: 14px;
+}
+.starTwo {
+  top: 125px;
+  left: 82%;
+  font-size: 10px;
+  color: #b3a3e8;
+}
+.flow {
+  margin: 8px 0 14px;
+  gap: 10px;
+}
+.detailTray {
+  height: 26px;
+}
+.process {
+  padding-top: 12px;
+}
+.intakeHeading {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.intakeHeading h3 {
+  font-size: 20px;
+  letter-spacing: -0.6px;
+}
+.intakeHeading > span {
+  font-size: 12px;
+}
+.channels {
+  gap: 14px;
+  grid-auto-rows: auto;
+}
+.channel {
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 12px 16px;
+  padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 3px 12px -8px #31487320;
+}
+.channelAction {
+  grid-column: 2;
+}
+.channelIcon {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  background: #f3f6fd;
+  box-shadow:
+    inset 0 2px 2px #fff,
+    0 4px 8px -5px #536eaa40;
+}
+.channelIcon svg {
+  width: 23px;
+  height: 23px;
+}
+.channel h4 {
+  font-size: 14px;
+}
+.channelText {
+  padding-right: 20px;
+}
+.channelText p {
+  font-size: 12px;
+}
+.channelNumber {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  color: #b7c1d5;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 1px;
+}
+.upload {
+  padding-block: 28px;
+  background:
+    radial-gradient(ellipse at 100% 0, #e8edff, transparent 70%), #f8faff;
+  border-color: #d6dff7;
+}
+.upload .channelIcon {
+  background: linear-gradient(135deg, #e9edff, #dae3ff);
+  border-color: #d0dbfa;
+}
+.uploadButton {
+  min-height: 42px;
+  border-radius: 8px;
+  background: linear-gradient(100deg, #4b61e5, #6074ee);
+  box-shadow: 0 4px 9px #4059e826;
+}
+.fileHint {
+  font-size: 10px;
+  margin-top: 2px;
+}
+.emailAddress,
+.whatsappButton {
+  min-height: 38px;
+  border-radius: 8px;
+}
+.assurance {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 18px;
+  color: #7b879b;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.assurance svg {
+  flex-shrink: 0;
+  color: #8195af;
+}
+@media (max-width: 1150px) {
+  .root {
+    max-width: 780px;
+    padding: 32px;
+  }
+  .split {
+    gap: 36px;
+  }
+}
+@media (max-width: 600px) {
+  .root {
+    padding: 24px 18px;
+  }
+  .intro h2 {
+    font-size: 34px;
+  }
+  .channel {
+    padding: 20px 16px;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 12px;
+  }
+  .channelIcon {
+    width: 40px;
+    height: 40px;
+  }
+  .channelAction {
+    grid-column: 1 / -1;
+  }
+  .paperLeft {
+    left: calc(50% - 137px);
+  }
+  .paperRight {
+    right: calc(50% - 137px);
+  }
+  .paper {
+    width: 78px;
+    height: 103px;
+    padding: 10px 8px;
+  }
+  .orbit {
+    width: 290px;
+  }
+  .assurance {
+    align-items: flex-start;
+    font-size: 10px;
+  }
+}
+
+/* One shared scene transforms from incoming paperwork to a reviewable entry. */
+.split {
+  align-items: stretch;
+}
+.pitch {
+  justify-content: flex-start;
+  gap: 26px;
+}
+.demo {
+  flex: 1;
+  min-height: 350px;
+  margin-top: 0;
+}
+.intake {
+  position: relative;
+}
+.assurance {
+  position: absolute;
+  top: 100%;
+  width: 100%;
+}
+.root {
+  padding-bottom: 64px;
+}
+.animationStage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+.scene {
+  position: relative;
+  height: 205px;
+  width: 100%;
+  isolation: isolate;
+}
+.scene .orbit {
+  width: 370px;
+  height: 172px;
+}
+.scene .orbitInner {
+  width: 270px;
+  height: 130px;
+}
+.scene .paper {
+  top: 47px;
+  transition:
+    transform 850ms ease,
+    opacity 650ms ease;
+}
+.scene .sparkleTile {
+  top: 13px;
+  transition:
+    opacity 400ms,
+    transform 600ms;
+}
+.scene .inboxTile {
+  top: 77px;
+  transition:
+    opacity 450ms,
+    transform 700ms;
+  overflow: hidden;
+}
+.scene .starOne {
+  top: 34px;
+}
+.scene .starTwo {
+  top: 163px;
+}
+.demo[data-step="1"] .paperLeft {
+  transform: translate(100px, 15px) rotate(-3deg) scale(0.6);
+  opacity: 0;
+}
+.demo[data-step="1"] .paperRight {
+  transform: translate(-100px, 15px) rotate(3deg) scale(0.6);
+  opacity: 0;
+}
+.demo[data-step="1"] .inboxTile {
+  transform: rotate(0deg) scale(1.12);
+}
+.demo[data-step="1"] .sparkleTile {
+  opacity: 0;
+  transform: translateY(55px) scale(0.6);
+}
+.scanLine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(transparent 40%, #ffffff55 50%, transparent 60%);
+  opacity: 0;
+}
+.demo[data-step="1"] .scanLine {
+  opacity: 1;
+  animation: scanDocument 1.6s ease-in-out infinite;
+}
+.extractedFields {
+  position: absolute;
+  top: 177px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  opacity: 0;
+}
+.extractedFields span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #dce4fb;
+  border-radius: 6px;
+  background: #f1f4ff;
+  color: #5c70b4;
+  padding: 4px 8px;
+  font-size: 10px;
+}
+.demo[data-step="1"] .extractedFields {
+  opacity: 1;
+}
+.demo[data-step="1"] .extractedFields span {
+  animation: captureField 0.6s both;
+  animation-delay: calc(0.5s + var(--index) * 0.6s);
+}
+.reviewDocument {
+  position: absolute;
+  width: min(300px, 94%);
+  left: 50%;
+  top: 31px;
+  padding: 17px;
+  border: 1px solid #d3e7de;
+  border-radius: 13px;
+  background: white;
+  box-shadow: 0 12px 28px -14px #496e6c40;
+  opacity: 0;
+  transform: translate(-50%, 20px) scale(0.85);
+  transition:
+    opacity 650ms,
+    transform 800ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.reviewHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.reviewHeading > span:first-child {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+.reviewHeading svg {
+  color: #6d80b2;
+}
+.reviewBadge {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  color: #358668;
+  background: #eff8f3;
+  padding: 4px 5px;
+  border-radius: 5px;
+  font-size: 8px;
+}
+.reviewVendor {
+  margin-top: 17px;
+  font-size: 11px;
+  color: #7b889d;
+}
+.reviewAmount {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-top: 3px;
+  font-size: 23px;
+  letter-spacing: -0.6px;
+  font-weight: 600;
+}
+.reviewAmount span {
+  font-size: 9px;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: #8a95a6;
+}
+.reviewFooter {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #edf2f1;
+  font-size: 9px;
+  color: #5d8a77;
+}
+.demo[data-step="2"] .reviewDocument {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+.demo[data-step="2"] .paperLeft {
+  opacity: 0;
+  transform: translate(100px, 15px) scale(0.6);
+}
+.demo[data-step="2"] .paperRight {
+  opacity: 0;
+  transform: translate(-100px, 15px) scale(0.6);
+}
+.demo[data-step="2"] .inboxTile,
+.demo[data-step="2"] .sparkleTile {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.6);
+}
+.sceneCaption {
+  text-align: center;
+  padding: 16px 4px 23px;
+}
+.sceneCaption strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.sceneCaption p {
+  max-width: 340px;
+  min-height: 38px;
+  margin: 7px auto 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #7b879b;
+}
+.process {
+  justify-content: center;
+}
+.demo[data-playing="false"] .scene * {
+  animation-play-state: paused;
+}
+@keyframes scanDocument {
+  from {
+    transform: translateY(-80%);
+  }
+  to {
+    transform: translateY(80%);
+  }
+}
+@media (max-width: 1150px) {
+  .assurance {
+    position: static;
+  }
+  .demo {
+    flex: none;
+  }
+}
+@media (max-width: 600px) {
+  .scene .orbit {
+    width: 280px;
+  }
+  .scene .orbitInner {
+    width: 210px;
+  }
+  .sceneCaption strong {
+    font-size: 13px;
+  }
+  .reviewDocument {
+    padding: 13px;
+  }
+}
+.demo[data-playing="false"] .extractedFields span {
+  animation: none;
+}
+
+/* Keep the welcome content comfortably inside the workspace at laptop sizes. */
+.root {
+  max-width: 1320px;
+  padding: 40px 64px 72px;
+}
+.split {
+  gap: clamp(40px, 4vw, 64px);
+}
+.pitch {
+  gap: 22px;
+}
+.eyebrow {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  margin-bottom: 14px;
+}
+.intro h2 {
+  font-size: clamp(28px, 2.25vw, 36px);
+  line-height: 1.2;
+  letter-spacing: -1.2px;
+  margin-bottom: 12px;
+}
+.intro > p {
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.75;
+}
+.intakeHeading {
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.intakeHeading h3 {
+  font-size: 17px;
+  letter-spacing: -0.4px;
+}
+.intakeHeading > span {
+  font-size: 11px;
+}
+.channels {
+  gap: 12px;
+}
+.channel {
+  padding: 18px 20px;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px 13px;
+  border-radius: 14px;
+}
+.upload {
+  padding-block: 22px;
+}
+.channelIcon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+}
+.channelIcon svg {
+  width: 20px;
+  height: 20px;
+}
+.channel h4 {
+  font-size: 12.5px;
+}
+.channelText p {
+  font-size: 11px;
+}
+.channelNumber {
+  top: 16px;
+  right: 16px;
+  font-size: 9px;
+}
+.uploadButton,
+.whatsappButton {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+.emailAddress {
+  min-height: 34px;
+}
+.emailAddress code {
+  font-size: 11px;
+}
+.fileHint {
+  font-size: 9px;
+}
+.demo {
+  min-height: 300px;
+  padding: 16px 20px;
+  border-radius: 17px;
+}
+.demoTop {
+  font-size: 12px;
+}
+.demoTop button {
+  min-height: 26px;
+  font-size: 10px;
+  padding: 3px 7px;
+}
+.scene {
+  height: 205px;
+  transform: scale(0.85);
+  transform-origin: center;
+  margin-block: -15px;
+}
+.sceneCaption {
+  padding: 10px 4px 16px;
+}
+.sceneCaption strong {
+  font-size: 12px;
+}
+.sceneCaption p {
+  max-width: 300px;
+  min-height: 34px;
+  font-size: 11px;
+  margin-top: 6px;
+}
+.process {
+  padding-top: 10px;
+}
+.process button {
+  font-size: 11px;
+  min-height: 25px;
+  gap: 6px;
+}
+.stepMarker {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
+  font-size: 10px;
+}
+.assurance {
+  margin-top: 16px;
+  font-size: 10px;
+}
+@media (max-width: 1150px) {
+  .root {
+    max-width: 720px;
+    padding: 32px 40px 48px;
+  }
+  .split {
+    gap: 32px;
+  }
+}
+@media (max-width: 600px) {
+  .root {
+    padding: 28px 20px 36px;
+  }
+  .intro h2 {
+    font-size: 29px;
+  }
+  .channel {
+    padding: 18px 16px;
+  }
+  .channelAction {
+    grid-column: 1 / -1;
+  }
+  .demo {
+    padding-inline: 14px;
+  }
+  .sceneCaption p {
+    max-width: 260px;
+  }
+}
