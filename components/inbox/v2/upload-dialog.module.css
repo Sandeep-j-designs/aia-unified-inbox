@@ -169,6 +169,68 @@
   background: #b5c1da;
   border-radius: 50%;
 }
+/*
+  The other two channels, on one line.
+
+  A footnote, not a section: this dialog is for the upload you already came
+  here to do, and the whole panel has to clear a laptop viewport without
+  scrolling. Written as two stacked cards with icon tiles and descriptions it
+  ran to 137px — taller than the guidelines above it — to say two things the
+  reader can act on later. Ruled off and set on a single wrapping row it is
+  about 30px, and the drop zone stays the tallest thing in the dialog.
+*/
+.channels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #edf0f6;
+}
+.channelsTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7d899c;
+}
+.channel {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #7d899c;
+}
+.channel svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: #8999bc;
+}
+/* The address is the thing being copied, so it does not get to wrap. */
+.channel code {
+  overflow: hidden;
+  color: #53627d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/*
+  The rule between the two channels. It only reads as a separator while they
+  are side by side, so it is dropped once the row wraps and the two sit on
+  lines of their own — a stray vertical tick at the start of a line separates
+  nothing.
+*/
+.channelDivider {
+  width: 1px;
+  height: 12px;
+  flex-shrink: 0;
+  background: #dfe5f0;
+}
+@media (max-width: 560px) {
+  .channelDivider {
+    display: none;
+  }
+}
 @media (max-width: 480px) {
   .tips {
     column-count: 1;

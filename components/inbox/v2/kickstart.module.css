@@ -1106,15 +1106,6 @@
 .channelText p {
   font-size: 12px;
 }
-.channelNumber {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  color: #b7c1d5;
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 1px;
-}
 .upload {
   padding-block: 28px;
   background:
@@ -1534,11 +1525,6 @@
 }
 .channelText p {
   font-size: 11px;
-}
-.channelNumber {
-  top: 16px;
-  right: 16px;
-  font-size: 9px;
 }
 .uploadButton,
 .whatsappButton {

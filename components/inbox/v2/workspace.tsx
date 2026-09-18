@@ -29,6 +29,7 @@ import {
   ListFilter,
   Lock,
   Mail,
+  MessageCircle,
   Loader2,
   Pin,
   PinOff,
@@ -4051,6 +4052,70 @@ export default function Workspace() {
                   ))}
                 </ul>
               </section>
+              {/*
+                The other two channels, named where the choice is being made.
+
+                Email and WhatsApp are introduced on the kickstart screen, and
+                the kickstart is gone the moment the first batch lands — so an
+                Inbox in daily use advertised uploading and nothing else, and
+                the two channels that do not need this dialog at all were
+                never mentioned again.
+
+                Only once there is something in the Inbox: opened from the
+                kickstart, both channels are already on the screen behind this
+                panel, and saying it twice is noise. Only for an upload, too —
+                the demo Email and WhatsApp intakes are already that channel.
+              */}
+              {source === "upload" && !kickstartPreview && (
+                <section
+                  aria-label="Other ways to send documents"
+                  className={uploadStyles.channels}
+                >
+                  <span className={uploadStyles.channelsTitle}>
+                    Or send in
+                  </span>
+                  <span className={uploadStyles.channel}>
+                    <Mail aria-hidden />
+                    <code>{company.slug}@inbox.aiaccountant.app</code>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-6 w-6 shrink-0"
+                      aria-label="Copy forwarding email address"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(
+                            `${company.slug}@inbox.aiaccountant.app`
+                          );
+                          notify(
+                            "Forwarding address copied. Paste it into your email client."
+                          );
+                        } catch {
+                          notify("Could not copy the address.", "warning");
+                        }
+                      }}
+                    >
+                      <Copy />
+                    </Button>
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className={uploadStyles.channelDivider}
+                  />
+                  <span className={uploadStyles.channel}>
+                    <MessageCircle aria-hidden />
+                    WhatsApp
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 shrink-0 px-1.5 text-xs text-primary"
+                      onClick={() => setDialog("whatsapp")}
+                    >
+                      Set up
+                    </Button>
+                  </span>
+                </section>
+              )}
             </>
           )}
           {files.length > 0 && (

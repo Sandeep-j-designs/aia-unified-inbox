@@ -226,9 +226,6 @@ export default function InboxKickstart({
               <span className={s.channelIcon}>
                 <Upload size={23} aria-hidden />
               </span>
-              <span className={s.channelNumber} aria-hidden="true">
-                01
-              </span>
               <div className={s.channelText}>
                 <h4>{dragOver ? "Release to upload" : "Upload a document"}</h4>
                 <p>Drop files here or browse your device.</p>
@@ -250,9 +247,6 @@ export default function InboxKickstart({
               )}
             </article>
             <article className={cn(s.channel, s.email)}>
-              <span className={s.channelNumber} aria-hidden="true">
-                02
-              </span>
               <span className={s.channelIcon}>
                 <Mail size={23} aria-hidden />
               </span>
@@ -284,9 +278,6 @@ export default function InboxKickstart({
               </div>
             </article>
             <article className={cn(s.channel, s.whatsapp)}>
-              <span className={s.channelNumber} aria-hidden="true">
-                03
-              </span>
               <span className={s.channelIcon}>
                 <MessageCircle size={23} aria-hidden />
               </span>
