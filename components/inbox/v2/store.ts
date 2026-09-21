@@ -848,15 +848,11 @@ export function remove(id: string) {
     );
   }
 }
-export function restore(id: string) {
-  const x = state.items.find((x) => x.id === id);
-  if (x?.status === "Deleted")
-    update(
-      id,
-      { status: x.deletedFrom || "Needs Review" },
-      "Inbox Item Restored"
-    );
-}
+/*
+  There is no restore. Deleting takes a document out of the Inbox and that is
+  the end of it — the status is kept so the audit log can still account for
+  what happened to the file, not so the queue can hand it back.
+*/
 export function setRoute(id: string, route: Route) {
   const x = state.items.find((x) => x.id === id);
   if (!x || x.route === route || !state.permissions.includes(route)) return;

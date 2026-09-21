@@ -165,7 +165,6 @@ import {
   Item,
   manual,
   remove,
-  restore,
   retry,
   Route,
   ROUTE_LABELS,
@@ -1549,7 +1548,7 @@ export default function Workspace() {
     item &&
     askDelete(`“${item.file.name}”`, () => {
       remove(item.id);
-      notify("Deleted. The file is kept — restore it from the Deleted tab.");
+      notify(`Deleted ${item.file.name}.`);
       nextItem();
     });
   // Production's sidebar entries map onto the three module views this
@@ -1653,10 +1652,11 @@ export default function Workspace() {
     reassignment away from where it was. The review page's Delete sat beside
     Approve and took the document away mid-read with no way back into it.
 
-    The wording says what is true rather than what is scary: nothing here is
-    destroyed, it moves to the Deleted tab and comes back from there. A
-    confirmation that overstates the stakes gets dismissed by reflex, and then
-    it protects nobody.
+    The wording says what is true. There is no Deleted tab and no Restore: a
+    deleted document leaves the Inbox and that is the end of it, which is
+    exactly why the question is worth asking. An earlier draft promised a tab
+    to get it back from — the tab does not exist, and a confirmation that
+    reassures you with something untrue is worse than no confirmation.
   */
   const [confirmDelete, setConfirmDelete] = useState<{
     target: string;
@@ -2292,19 +2292,23 @@ export default function Workspace() {
                   </div>
                 </>
               ) : item.status === "Deleted" ? (
-                <EmptyState title="Deleted">
+                /*
+                  Only reachable by a link to a document deleted since — a
+                  back button, a second tab, a bookmarked id. It offered to
+                  restore it, which is not a thing this product does; what it
+                  owes the reader now is why the page is empty and the way
+                  back to the queue.
+                */
+                <EmptyState title="This document was deleted">
                   <p className={T.value}>
-                    This document and its audit history are preserved.
+                    It is no longer in the Inbox. Its audit history is kept.
                   </p>
                   <Button
                     variant="outline"
                     className="text-primary"
-                    onClick={() => {
-                      restore(item.id);
-                      notify("Restored to the Inbox.");
-                    }}
+                    onClick={() => void router.push("/inbox")}
                   >
-                    Restore item
+                    Back to Inbox
                   </Button>
                 </EmptyState>
               ) : ["Received", "Extracting"].includes(item.status) ? (
@@ -3931,16 +3935,11 @@ export default function Workspace() {
                         <Trash2 className="h-4 w-4" />
                         Delete
                       </BulkButton>
-                      {tab === "Deleted" && (
-                        <BulkButton
-                          onClick={() => {
-                            selected.forEach(restore);
-                            setSelected([]);
-                          }}
-                        >
-                          Restore
-                        </BulkButton>
-                      )}
+                      {/* A Restore button used to sit here behind
+                          `tab === "Deleted"`. There is no Deleted tab — the
+                          tab list is All, Need review, Approved, Duplicate —
+                          so the condition was never true and the button was
+                          never reachable. */}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -4682,8 +4681,8 @@ export default function Workspace() {
       >
         <p className={T.value}>
           {confirmDelete?.many
-            ? "They move to the Deleted tab. Nothing is removed from Tally, and you can restore them from there."
-            : "It moves to the Deleted tab. Nothing is removed from Tally, and you can restore it from there."}
+            ? "They are removed from the Inbox. Nothing is posted to Tally, and this can’t be undone."
+            : "It is removed from the Inbox. Nothing is posted to Tally, and this can’t be undone."}
         </p>
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setConfirmDelete(null)}>
@@ -4943,8 +4942,11 @@ const BulkButton = ({
  * to take with the document in front of you; a menu that repeats them makes
  * the row a second, smaller version of the screen it opens.
  *
- * A row already in the Deleted tab drops Delete altogether: it is a no-op
- * dressed as a choice, and the store's guard would refuse it anyway.
+ * A row whose document is already deleted drops Delete altogether: it is a
+ * no-op dressed as a choice, and the store's guard would refuse it anyway.
+ * (Such a row cannot appear in the queue — All excludes deleted documents —
+ * but the guard costs nothing and the menu is built from the item, not the
+ * tab.)
  */
 const RowActions = ({
   item,
