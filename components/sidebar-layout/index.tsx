@@ -178,6 +178,8 @@ const NavLink = ({
           : undefined
       }
       aria-current={isActive ? "page" : undefined}
+      // Anchor for the guided walkthrough; see config/pages/guide.
+      data-guide-id={`nav-${item.id}`}
       aria-label={collapsed ? label : undefined}
       title={collapsed ? label : undefined}
       data-label={label}

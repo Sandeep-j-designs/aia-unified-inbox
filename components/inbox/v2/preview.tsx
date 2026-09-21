@@ -38,7 +38,7 @@ export default function Preview({ item }: { item: Item }) {
     };
   }, [item.file.blobId]);
   return (
-    <div className="flex min-h-0 flex-col p-5">
+    <div data-guide-id="inbox-preview" className="flex min-h-0 flex-col p-5">
       <div
         ref={card}
         className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-neutral-gray bg-background"

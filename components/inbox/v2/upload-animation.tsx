@@ -63,7 +63,10 @@ export default function UploadAnimation({
           {success
             ? "Ready for your inbox"
             : complete
-              ? `${failed} need attention`
+              ? // Named for what happened, not for what it asks of the
+                // reader: "need attention" is a prompt, and the failure list
+                // right below is already the prompt.
+                `${failed} Failed`
               : "Bringing your documents together"}
         </span>
       </div>

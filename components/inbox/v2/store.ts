@@ -1329,6 +1329,37 @@ export function beginUploadedExtraction(
   );
 }
 
+/**
+ * Put one company back to the state a fresh page load would give it.
+ *
+ * The guided walkthrough uploads, extracts and opens a document, and what it
+ * demonstrates is the arc that starts from an empty Inbox — so it has to be
+ * able to hand the screen back the way it found it. A page reload already does
+ * this for the whole prototype (see `init`); this is the same reset scoped to
+ * the company the tour ran in, so a second company someone had worked is left
+ * alone.
+ *
+ * Extraction timers already in flight are not cancelled here: they resolve
+ * against ids that are no longer in the store, and `scheduleExtraction`'s
+ * update is a no-op for an item it cannot find.
+ */
+export function resetCompany(company: string) {
+  const fresh = seed();
+  state = {
+    ...state,
+    startedCompanies: (state.startedCompanies || []).filter(
+      (id) => id !== company
+    ),
+    items: [
+      ...state.items.filter((item) => item.company !== company),
+      ...fresh.items.filter((item) => item.company === company),
+    ],
+    events: state.events.filter((entry) => entry.company !== company),
+    queue: [],
+  };
+  persist();
+}
+
 export const BULK_VOUCHER_TYPES = [
   "Purchase",
   "Journal",
@@ -1339,7 +1370,23 @@ export const BULK_VOUCHER_TYPES = [
   "Contra",
 ] as const;
 export type BulkField =
-  "Vendor" | "GST Registration" | "Voucher Type" | "Ledger";
+  "Vendor" | "GST Registration" | "Voucher Type" | "Ledger" | "Route";
+
+/**
+ * What the queue calls each route, and the way back from the label.
+ *
+ * The Route field is set by name — the table cell and the selection bar both
+ * offer the voucher names an accountant reads, not the two-letter codes the
+ * store keys on — so the reverse map is what turns a pick into a Route.
+ */
+export const ROUTE_LABELS: Record<Route, string> = {
+  AP: "Purchase Voucher",
+  AR: "Sales Voucher",
+  JV: "Journal Voucher",
+};
+export const ROUTE_BY_LABEL: Record<string, Route> = Object.fromEntries(
+  Object.entries(ROUTE_LABELS).map(([route, label]) => [label, route as Route])
+) as Record<string, Route>;
 export type BulkResult = {
   changed: number;
   skipped: number;
@@ -1418,6 +1465,26 @@ export function applyBulkAction(
         !(BULK_VOUCHER_TYPES as readonly string[]).includes(nextValue)
       ) {
         skip("Invalid voucher type");
+        continue;
+      }
+      if (action === "Route") {
+        const nextRoute = ROUTE_BY_LABEL[nextValue];
+        if (!nextRoute) {
+          skip("Invalid route");
+          continue;
+        }
+        if (!state.permissions.includes(nextRoute)) {
+          skip(`No write access to ${routeNames[nextRoute]}`);
+          continue;
+        }
+        /*
+          setRoute owns the rest: it carries the per-route draft across, clears
+          a voucher number that belonged to the old route, and logs the
+          override against the AI's original pick. Reassigning by hand and
+          reassigning in bulk have to leave the same trail.
+        */
+        if (item.route !== nextRoute) setRoute(id, nextRoute);
+        result.changed++;
         continue;
       }
       if (action === "Ledger" && !item.form.lines.length && !item.arSheet) {

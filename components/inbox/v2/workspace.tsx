@@ -28,9 +28,10 @@ import {
   GripVertical,
   ListFilter,
   Lock,
+  Loader2,
   Mail,
   MessageCircle,
-  Loader2,
+  MoreVertical,
   Pin,
   PinOff,
   RotateCcw,
@@ -43,6 +44,17 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import useGuide from "@/hooks/pages/guide/use-guide";
+import {
+  GUIDE_ACTION_EVENT,
+  type GuideAction,
+} from "@/components/guide/actions";
 import FileIcon from "@/components/inbox/common/file-icon";
 import JournalVoucher from "@/components/inbox/journal";
 import {
@@ -105,6 +117,7 @@ import Preview from "./preview";
 import EditableCell from "./editable-cell";
 import InboxKickstart from "./kickstart";
 import {
+  ACTIONS_WIDTH,
   COLUMN_SIZES,
   DEFAULT_WIDTHS,
   SELECT_WIDTH,
@@ -145,6 +158,7 @@ import {
   hardMatch,
   ingest,
   demoUploadDocuments,
+  resetCompany,
   beginUploadedExtraction,
   init,
   issue,
@@ -154,6 +168,7 @@ import {
   restore,
   retry,
   Route,
+  ROUTE_LABELS,
   routeNames,
   routes,
   setPermissions,
@@ -194,15 +209,6 @@ const stamp = (s: string) =>
  * be three chances for them to disagree.
  */
 const MAX_UPLOAD_FILES = 50;
-/**
- * A file size a person reads. Every size used to be printed in KB, so an 8MB
- * scan arrived as "8192 KB" — technically the size, and four digits nobody
- * converts at a glance.
- */
-const fileSize = (bytes: number) =>
-  bytes >= 1024 * 1024
-    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
 const age = (s: string) => {
   const m = Math.max(0, Math.floor((Date.now() - +new Date(s)) / 60000));
   return m < 60
@@ -286,6 +292,16 @@ const columns = [
 const sourceLabels = { email: "Email", whatsapp: "WhatsApp", upload: "Upload" };
 
 /**
+ * How a document arrived, said in words.
+ *
+ * Not a pill: the five badge tones are all spoken for by Status, and a chip
+ * here put a second coloured thing in the row that meant something else
+ * entirely. Not an icon either — an envelope and a speech bubble are a legend
+ * to learn, and the column is read, not scanned. The word is the shortest
+ * thing that needs no key.
+ */
+
+/**
  * What the AI Route column calls each route.
  *
  * The queue names the voucher the document is about to become rather than the
@@ -295,12 +311,11 @@ const sourceLabels = { email: "Email", whatsapp: "WhatsApp", upload: "Upload" };
  *
  * Separate from `routeNames`, which stays the name of the module itself — the
  * Post as picker, the registers and the sync modal all name modules.
+ *
+ * Lives in the store now, because the selection bar sets the route by the same
+ * label and the reverse lookup has to agree with this one.
  */
-const aiRouteLabels: Record<Route, string> = {
-  AP: "Purchase Voucher",
-  AR: "Sales Voucher",
-  JV: "Journal Voucher",
-};
+const aiRouteLabels = ROUTE_LABELS;
 const columnVisibilityKey = `inbox.columns.v3:${encodeURIComponent(actor)}`;
 const defaultColumns = (companyId: string) =>
   columns.filter(
@@ -311,17 +326,24 @@ const defaultColumns = (companyId: string) =>
   );
 const RESIZABLE = new Set(columns);
 /**
- * Pinning is what locks a column. A pinned column holds the front of the grid,
- * cannot be dragged while pinned — the list in the Columns dropdown
- * keeps a visibility checkbox for every column. Hiding also unpins it.
+ * Pinning is what locks a column. A pinned column holds the front of the grid
+ * and cannot be dragged while pinned.
  *
- * File and Status start pinned because they are what the screen is for: File
- * identifies the row at all, and Status is what the accountant reads to decide
- * whether to open it. Pinning Status also settles the problem the column widths
- * were tuned around — it can no longer be the column pushed off the right edge,
- * because it is no longer on the right.
+ * File and Status are pinned permanently, not by default: File identifies the
+ * row at all, and Status is what the accountant reads to decide whether to
+ * open it, so a queue missing either is a queue that cannot be worked. They
+ * carry a padlock rather than a pin toggle and their visibility checkbox is
+ * fixed on — the arrangement is the user's everywhere else, but these two are
+ * what the screen is, and a layout that can be arranged into uselessness is a
+ * layout with a trap in it.
+ *
+ * Pinning Status also settles the problem the column widths were tuned around:
+ * it can no longer be the column pushed off the right edge, because it is no
+ * longer on the right.
  */
-const DEFAULT_PINNED = ["File", "Status"];
+const LOCKED_COLUMNS = new Set(["File", "Status"]);
+/** The locked pair leads the grid, in the order `columns` declares them. */
+const DEFAULT_PINNED = columns.filter((c) => LOCKED_COLUMNS.has(c));
 /**
  * Motion for the Columns list. One duration and one curve for the rows sliding
  * aside and for the dragged row settling into its slot, so the drop reads as
@@ -389,8 +411,10 @@ const cellValue = (x: Item, column: string): string | number => {
       return x.form.party;
     case "Voucher type":
       return x.form.voucherType;
+    // The route as it stands, not the AI's original pick: the column is a
+    // dropdown, so filtering and sorting have to answer for what it shows.
     case "AI Route":
-      return aiRouteLabels[x.aiRoute];
+      return aiRouteLabels[x.route];
     case "GST Registration":
       return x.form.gst;
     case "Amount":
@@ -591,9 +615,23 @@ export default function Workspace() {
         !startedInboxCompanies.has(state.company)
     );
   }, [state.company, state.startedCompanies]);
+  /*
+    The launch guide is the Inbox journey now — the same seven steps the Guide
+    button offers, rather than a second four-card dialog that said the same
+    thing in a different shape. It runs once, on the first queue that has
+    anything in it: there is nothing to narrate over an empty table, and the
+    kickstart screen is already a guided page of its own.
+  */
+  const guide = useGuide();
+  const autoGuided = useRef(false);
+  useEffect(() => {
+    if (state.tourDone || kickstartPreview || autoGuided.current) return;
+    autoGuided.current = true;
+    configure({ tourDone: true });
+    guide.startJourney("inbox");
+  }, [state.tourDone, kickstartPreview]);
   const [ready, setReady] = useState(false),
     [dialog, setDialog] = useState(""),
-    [tour, setTour] = useState(0),
     /**
      * Whether Approve has been pressed on the journal currently open.
      *
@@ -676,8 +714,12 @@ export default function Workspace() {
   const [uploadStatus, setUploadStatus] = useState<
     ("Queued" | "Uploading" | "Uploaded" | "Failed")[]
   >([]);
-  /** The beat between the last file landing and the Inbox taking over. */
-  const [handoff, setHandoff] = useState(false);
+  /**
+   * The beat between the last file landing and the Inbox taking over. Only
+   * the setter is read now: the line that reported the handoff in words is
+   * gone, but the beat itself still paces the dialog's exit.
+   */
+  const [, setHandoff] = useState(false);
   /** Set for one beat after the dialog leaves, so the table can enter. */
   const [justUploaded, setJustUploaded] = useState(false);
   const sheetSend = useRef<(type: string) => void>(() => {});
@@ -714,16 +756,34 @@ export default function Workspace() {
           const valid: Record<string, string[]> = {};
           for (const [companyId, values] of Object.entries(parsed)) {
             if (!Array.isArray(values)) continue;
-            const known = columns.filter((c) => values.includes(c));
+            // Locked columns are forced back in, for the same reason the pins
+            // are: a stored session must not restore a table without them.
+            const known = columns.filter(
+              (c) => values.includes(c) || LOCKED_COLUMNS.has(c)
+            );
             if (known.length) valid[companyId] = known;
           }
           setVisibilityByCompany(valid);
         }
       }
       const pn = sessionStorage.getItem("inbox.pinned.v2");
-      const storedPins: string[] = pn
-        ? JSON.parse(pn).filter((c: unknown) => columns.includes(c as string))
-        : DEFAULT_PINNED;
+      /*
+        The locked pair is re-asserted over whatever was stored, and leads it.
+
+        A session saved while File and Status could still be unpinned is a
+        session that would come back without them at the front — restoring a
+        layout the screen no longer allows anyone to reach.
+      */
+      const storedPins: string[] = [
+        ...DEFAULT_PINNED,
+        ...(pn
+          ? JSON.parse(pn).filter(
+              (c: unknown) =>
+                columns.includes(c as string) &&
+                !LOCKED_COLUMNS.has(c as string)
+            )
+          : []),
+      ];
       setPinned(storedPins);
       const od = sessionStorage.getItem("inbox.order.v2");
       // Reconciled against the current column list rather than trusted: a
@@ -903,6 +963,9 @@ export default function Workspace() {
    * where it is — which is the first unpinned slot, where the user last saw it.
    */
   const togglePin = (column: string) => {
+    // The two locked columns have no toggle in the list; this is the guard for
+    // every other way in — a stored session, a keyboard path, a later caller.
+    if (LOCKED_COLUMNS.has(column)) return;
     if (pinned.includes(column)) {
       setPinned((p) => p.filter((c) => c !== column));
       return;
@@ -914,6 +977,7 @@ export default function Workspace() {
     setVisible((v) => (v.includes(column) ? v : [...v, column]));
   };
   const toggleColumn = (column: string, on: boolean) => {
+    if (!on && LOCKED_COLUMNS.has(column)) return;
     if (!on && visible.length === 1) return;
     if (!on) setPinned((pins) => pins.filter((c) => c !== column));
     setVisible((v) => {
@@ -1099,8 +1163,11 @@ export default function Workspace() {
   );
   const colWidths = sizeColumns(shown, avail, widths);
   const colWidth = (c: string) => colWidths[c] ?? DEFAULT_WIDTHS[c];
+  // Both fixed bookends count: the checkbox at one end, the kebab at the other.
   const tableWidth =
-    SELECT_WIDTH + shown.reduce((sum, c) => sum + colWidth(c), 0);
+    SELECT_WIDTH +
+    ACTIONS_WIDTH +
+    shown.reduce((sum, c) => sum + colWidth(c), 0);
   const company = companies.find((c) => c.id === state.company)!;
   const id = typeof router.query.id === "string" ? router.query.id : "";
   const moduleRoute = routes.includes(router.query.module as Route)
@@ -1232,6 +1299,17 @@ export default function Workspace() {
   const allFilteredSelected =
     !!filtered.length && filtered.every((x) => selected.includes(x.id));
   /**
+   * The routes this role can post to, by the name the queue gives them.
+   *
+   * Offering a route the role has no write access to would be offering a pick
+   * the store then refuses — the skip reason would be the first anyone heard
+   * of it.
+   */
+  const routeLabelOptions = routes
+    .filter((r) => state.permissions.includes(r))
+    .map((r) => ROUTE_LABELS[r]);
+
+  /**
    * What each reassignable field can be set to.
    *
    * Vendors and ledgers are read off the queue itself — the names in play are
@@ -1241,6 +1319,7 @@ export default function Workspace() {
   const bulkOptions = (field: BulkField): string[] => {
     if (field === "Voucher Type") return [...BULK_VOUCHER_TYPES];
     if (field === "GST Registration") return company.branches;
+    if (field === "Route") return routeLabelOptions;
     return [
       ...new Set(
         field === "Vendor"
@@ -1466,12 +1545,13 @@ export default function Workspace() {
         : matched
           ? `Same invoice number as ${matched.form.voucherNo} for ${item.form.party}. Change the vendor or the invoice number to approve.`
           : "";
-  const deleteItem = () => {
-    if (!item) return;
-    remove(item.id);
-    notify("Deleted. The file is kept — restore it from the Deleted tab.");
-    nextItem();
-  };
+  const deleteItem = () =>
+    item &&
+    askDelete(`“${item.file.name}”`, () => {
+      remove(item.id);
+      notify("Deleted. The file is kept — restore it from the Deleted tab.");
+      nextItem();
+    });
   // Production's sidebar entries map onto the three module views this
   // prototype actually has; the rest are real nav in the app but unbuilt here,
   // so they say so rather than routing into a 404.
@@ -1566,6 +1646,47 @@ export default function Workspace() {
   const bulkApprove = () =>
     reportBulk("Approved", applyBulkAction(selected, "Approve"));
   /*
+    Every delete asks first, and asks in one place.
+
+    Delete is the only destructive action on this screen that is one click
+    from a menu — Approve posts and can be reversed, a reassignment is another
+    reassignment away from where it was. The review page's Delete sat beside
+    Approve and took the document away mid-read with no way back into it.
+
+    The wording says what is true rather than what is scary: nothing here is
+    destroyed, it moves to the Deleted tab and comes back from there. A
+    confirmation that overstates the stakes gets dismissed by reflex, and then
+    it protects nobody.
+  */
+  const [confirmDelete, setConfirmDelete] = useState<{
+    target: string;
+    many: boolean;
+    run: () => void;
+  } | null>(null);
+  const askDelete = (target: string, run: () => void, many = false) =>
+    setConfirmDelete({ target, many, run });
+  /*
+    One row's delete, run through the same guard as the bar's.
+
+    An approved voucher is read-only and an already-deleted one is nothing to
+    do, and the kebab is reachable on both — so the refusal has to come from
+    the same place the bulk path gets it from, or the two disagree about what
+    a deletable row is.
+  */
+  const deleteRow = (x: Item) =>
+    askDelete(`“${x.file.name}”`, () => {
+      const result = applyBulkAction([x.id], "Delete");
+      if (!result.changed) {
+        notify(
+          Object.keys(result.reasons).join(" · ") ||
+            "This row can’t be deleted.",
+          "error"
+        );
+        return;
+      }
+      notify(`Deleted ${x.file.name}.`);
+    });
+  /*
     Reassignment lands the moment a value is picked.
 
     It used to open a drawer per field — choose Vendor, search, select, press
@@ -1602,14 +1723,28 @@ export default function Workspace() {
   };
   const upload = async (
     selectedFiles: File[],
-    intakeSource: Item["source"]
+    intakeSource: Item["source"],
+    /**
+     * The guided walkthrough's own batch.
+     *
+     * It sends documents in with no file of the user's involved, so the demo
+     * samples are seeded whatever the company's history is, and nothing in the
+     * batch is made to fail — a tour is not the place to introduce a problem
+     * the viewer cannot act on. Everything after this line is the ordinary
+     * upload: the same panel, the same extraction, the same queue.
+     */
+    demo?: { count: number }
   ) => {
     const targetCompany =
       intakeSource === "whatsapp" ? state.waCompany : state.company;
     const firstUpload =
       !state.startedCompanies?.includes(targetCompany) &&
       !startedInboxCompanies.has(targetCompany);
-    const samples = firstUpload ? demoUploadDocuments(targetCompany, 35) : [];
+    const samples = demo
+      ? demoUploadDocuments(targetCompany, demo.count)
+      : firstUpload
+        ? demoUploadDocuments(targetCompany, 35)
+        : [];
     const batch = [
       ...selectedFiles,
       ...samples.map((item) => ({
@@ -1632,7 +1767,7 @@ export default function Workspace() {
       document.
     */
     const failAt = new Set(
-      samples.length
+      samples.length && !demo
         ? [
             selectedFiles.length + 3,
             selectedFiles.length + Math.floor(samples.length * 0.7),
@@ -1677,7 +1812,7 @@ export default function Workspace() {
                 — a 100/145/190 cycle that made the bar stutter forward at three
                 different speeds and read as random rather than as progress.
               */
-              window.setTimeout(resolve, firstUpload ? 120 : 800)
+              window.setTimeout(resolve, demo ? 600 : firstUpload ? 120 : 800)
             ),
           ]);
           errors = failAt.has(index)
@@ -1703,7 +1838,9 @@ export default function Workspace() {
           )
         );
       }
-      if (received) {
+      // `landed` as well as `received`: the guide's batch is all samples and
+      // no file of the user's, and it still has to be published and extracted.
+      if (received || landed.length) {
         /*
           The handoff, in four beats.
 
@@ -1779,6 +1916,74 @@ export default function Workspace() {
       setBusy(false);
     }
   };
+  /*
+    The guided walkthrough asking the screen to do something.
+
+    The journey demonstrates the flow instead of waiting for a document the
+    viewer may not have to hand, and sending one in is the screen's to do. The
+    listener is re-attached every render on purpose: it reads `all` and the
+    dialog setters, and a handler pinned once would send the guide's bill into
+    the company that was open when the tour started.
+
+    DEV: delete with components/guide/actions on transplant — production's
+    guide service narrates the user's own upload and asks for nothing here.
+  */
+  useEffect(() => {
+    const onGuideAction = (event: Event) => {
+      const action = (event as CustomEvent<{ action: GuideAction }>).detail
+        ?.action;
+      if (action === "open-upload") {
+        setSource("upload");
+        setFiles([]);
+        setUploadStatus([]);
+        setUploadErrors([]);
+        setDialog("upload");
+      }
+      if (action === "demo-upload") void upload([], "upload", { count: 3 });
+      if (action === "open-record") {
+        /*
+          Extraction is still running when this arrives — the step before it
+          is the one watching documents come out of it — so the open is
+          retried rather than fired once at a queue that has nothing ready in
+          it yet. It reads the store directly each time: `all` is this
+          render's list, and the document being waited for is by definition
+          not in it.
+        */
+        let tries = 0;
+        const attempt = () => {
+          const ready = getState().items.find(
+            (x) =>
+              x.company === state.company &&
+              ["Needs Review", "Duplicate"].includes(x.status)
+          );
+          if (ready) open(ready);
+          else if (++tries < 20) window.setTimeout(attempt, 400);
+        };
+        attempt();
+      }
+      if (action === "reset-demo") {
+        resetCompany(state.company);
+        startedInboxCompanies.delete(state.company);
+        setKickstartPreview(true);
+        setDialog("");
+        setFiles([]);
+        setUploadStatus([]);
+        setUploadErrors([]);
+        setHandoff(false);
+        setFilters(defaultFilters);
+        setTab("Need review");
+        setPage(0);
+        setSelected([]);
+        /* The tour's last steps run on a document, and a document is `?id=`
+           on this same route — so it is the query that has to go, not the
+           path. Left alone, the review screen stays up over an Inbox that has
+           been emptied behind it. */
+        if (router.asPath !== "/inbox") void router.push("/inbox");
+      }
+    };
+    window.addEventListener(GUIDE_ACTION_EVENT, onGuideAction);
+    return () => window.removeEventListener(GUIDE_ACTION_EVENT, onGuideAction);
+  });
   const uploadedCount = uploadStatus.filter((s) => s === "Uploaded").length;
   /*
     The one reason every failure in this batch shares, or "" if they differ.
@@ -1866,6 +2071,7 @@ export default function Workspace() {
                     >
                       <SelectTrigger
                         id="inbox-post-as"
+                        data-guide-id="inbox-route"
                         aria-label="Post as"
                         title="Change where this document posts"
                         className={cn(
@@ -2023,6 +2229,7 @@ export default function Workspace() {
                     {reviewable && (
                       <BlockedReason reason={blockReason}>
                         <Button
+                          data-guide-id="inbox-approve"
                           // h-8/px-3 to sit level with Delete, the route chip
                           // and the pager: it stays the loudest thing in the
                           // row by being the only filled control, not by being
@@ -2288,7 +2495,10 @@ export default function Workspace() {
                         minSize={40}
                         className="min-w-0"
                       >
-                        <div className="h-full min-w-0 overflow-auto">
+                        <div
+                          data-guide-id="inbox-fields"
+                          className="h-full min-w-0 overflow-auto"
+                        >
                           <JournalVoucher
                             key={`${item.id}-${item.route}`}
                             item={item}
@@ -2313,6 +2523,7 @@ export default function Workspace() {
                       </ResizablePanel>
                       <ResizableHandle withHandle />
                       <ResizablePanel
+                        data-guide-id="inbox-fields"
                         defaultSize={68}
                         minSize={40}
                         className="flex min-w-0 flex-col"
@@ -2329,6 +2540,10 @@ export default function Workspace() {
                       </ResizablePanel>
                     </ResizablePanelGroup>
                   ) : (
+                    /* No guide anchor here: the AP sheet is an embedded
+                       document that draws both the preview and the form, and
+                       its own panes carry the anchors. Marking the wrapper
+                       would highlight the whole screen. */
                     <div className="flex min-h-0 flex-1 flex-col">
                       <Sheet
                         key={`${item.id}-${item.route}`}
@@ -2409,10 +2624,12 @@ export default function Workspace() {
                   )
                 );
               }}
-              onDelete={(x) => {
-                remove(x.id);
-                notify(`Deleted ${x.form.voucherNo || x.file.name}.`);
-              }}
+              onDelete={(x) =>
+                askDelete(`“${x.form.voucherNo || x.file.name}”`, () => {
+                  remove(x.id);
+                  notify(`Deleted ${x.form.voucherNo || x.file.name}.`);
+                })
+              }
               onUnbuilt={(what) =>
                 notify(
                   `${what} is part of the app, but not this prototype.`,
@@ -2554,6 +2771,11 @@ export default function Workspace() {
                             <TabsTrigger
                               key={t}
                               value={t}
+                              data-guide-id={
+                                t === "Need review"
+                                  ? "inbox-tab-review"
+                                  : undefined
+                              }
                               className="gap-2 rounded-none border-b-2 border-transparent px-2.5 py-3 text-sm text-secondary-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-none"
                             >
                               {t}
@@ -2817,6 +3039,8 @@ export default function Workspace() {
                             ) : (
                               columnMatches.map((c, i) => {
                                 const locked = pinned.includes(c);
+                                // Pinned by the user, or pinned by the screen.
+                                const fixed = LOCKED_COLUMNS.has(c);
                                 const checked = visible.includes(c);
                                 const isDragged = drag?.key === c;
                                 return (
@@ -2887,7 +3111,10 @@ export default function Workspace() {
                                     <Checkbox
                                       id={`col-${c}`}
                                       checked={checked}
-                                      disabled={checked && visible.length === 1}
+                                      disabled={
+                                        fixed ||
+                                        (checked && visible.length === 1)
+                                      }
                                       onCheckedChange={(next) =>
                                         toggleColumn(c, !!next)
                                       }
@@ -2906,31 +3133,47 @@ export default function Workspace() {
                                     >
                                       {c}
                                     </Label>
-                                    <button
-                                      type="button"
-                                      onClick={() => togglePin(c)}
-                                      aria-label={
-                                        locked ? `Unpin ${c}` : `Pin ${c}`
-                                      }
-                                      aria-pressed={locked}
-                                      title={
-                                        locked
-                                          ? "Unpin — lets the column be reordered"
-                                          : "Pin — moves the column to the front"
-                                      }
-                                      className={cn(
-                                        "flex-none rounded p-0.5",
-                                        locked
-                                          ? "text-primary"
-                                          : "text-secondary-foreground hover:text-foreground"
-                                      )}
-                                    >
-                                      {locked ? (
-                                        <PinOff className="h-4 w-4" />
-                                      ) : (
-                                        <Pin className="h-4 w-4" />
-                                      )}
-                                    </button>
+                                    {fixed ? (
+                                      // A padlock, not a disabled pin: the
+                                      // control is not temporarily unavailable,
+                                      // it is not a choice. Same slot, so the
+                                      // rows still line up.
+                                      <span
+                                        className="flex-none p-0.5 text-secondary-foreground"
+                                        title={`${c} is always shown and always first`}
+                                      >
+                                        <Lock className="h-4 w-4" aria-hidden />
+                                        <span className="sr-only">
+                                          {c} is locked
+                                        </span>
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => togglePin(c)}
+                                        aria-label={
+                                          locked ? `Unpin ${c}` : `Pin ${c}`
+                                        }
+                                        aria-pressed={locked}
+                                        title={
+                                          locked
+                                            ? "Unpin — lets the column be reordered"
+                                            : "Pin — moves the column to the front"
+                                        }
+                                        className={cn(
+                                          "flex-none rounded p-0.5",
+                                          locked
+                                            ? "text-primary"
+                                            : "text-secondary-foreground hover:text-foreground"
+                                        )}
+                                      >
+                                        {locked ? (
+                                          <PinOff className="h-4 w-4" />
+                                        ) : (
+                                          <Pin className="h-4 w-4" />
+                                        )}
+                                      </button>
+                                    )}
                                   </div>
                                 );
                               })
@@ -3201,6 +3444,35 @@ export default function Workspace() {
                               ) : null}
                             </TableHead>
                           ))}
+                          {/*
+                            Outside `shown`, like the checkbox at the other
+                            end: Actions holds no value, so sorting, filtering,
+                            hiding and resizing all have nothing to act on, and
+                            a column in that list is offered every one of them.
+                          */}
+                          {/*
+                            Pinned to the right edge of the scroller, the way
+                            the toolbar above is pinned to the left. The kebab
+                            is how a row is acted on, and a widened table put
+                            it past the edge — the one control you always want
+                            within reach was the first thing to scroll out of
+                            sight.
+
+                            Sticky inside a sticky: this cell holds its
+                            horizontal place within a header that is already
+                            holding its vertical one, which is why it carries
+                            the header's own ground rather than a transparent
+                            one — rows must pass under it, not through it.
+                          */}
+                          <TableHead
+                            role="columnheader"
+                            style={{ width: ACTIONS_WIDTH }}
+                            className="sticky right-0 z-10 h-10 border-l border-neutral-gray bg-[#fbfbfe] px-3 py-0 align-middle"
+                          >
+                            <span className="flex h-4 items-center truncate">
+                              Actions
+                            </span>
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody role="rowgroup">
@@ -3208,11 +3480,19 @@ export default function Workspace() {
                           <TableRow
                             key={x.id}
                             role="row"
+                            // The guide points at the first row it finds; the
+                            // step is about what a row is, not about this one.
+                            data-guide-id={
+                              rowIndex === 0 ? "inbox-row" : undefined
+                            }
                             // +2, not +1: row 1 is the header.
                             aria-rowindex={rowIndex + 2}
                             aria-selected={selected.includes(x.id)}
                             onClick={() => open(x)}
-                            className="cursor-pointer"
+                            // `group` so the pinned Actions cell can pick the
+                            // row's hover tint back up — it paints its own
+                            // ground and would otherwise stay pale.
+                            className="group cursor-pointer"
                           >
                             <TableCell
                               role="gridcell"
@@ -3235,6 +3515,11 @@ export default function Workspace() {
                               <TableCell
                                 key={c}
                                 role="gridcell"
+                                data-guide-id={
+                                  rowIndex === 0 && c === "Status"
+                                    ? "inbox-status"
+                                    : undefined
+                                }
                                 id={gridCellId(rowIndex, colIndex)}
                                 aria-colindex={colIndex + 1}
                                 // The range, not the checkbox column: this is
@@ -3287,20 +3572,14 @@ export default function Workspace() {
                                     </div>
                                   ) : c === "Source" ? (
                                     <div className="min-w-0 space-y-1">
-                                      <div className="flex min-w-0 items-center gap-1.5">
-                                        <Pill
-                                          className={cn(
-                                            tablePillClass,
-                                            "shrink-0"
-                                          )}
-                                          title={sourceLabels[x.source]}
-                                        >
+                                      <div
+                                        className="flex min-w-0 items-center gap-1.5"
+                                        title={`${sourceLabels[x.source]}${x.sender ? ` · ${x.sender}` : ""}`}
+                                      >
+                                        <span className="flex-none text-secondary-foreground">
                                           {sourceLabels[x.source]}
-                                        </Pill>
-                                        <span
-                                          className="min-w-0 truncate"
-                                          title={x.sender}
-                                        >
+                                        </span>
+                                        <span className="min-w-0 truncate">
                                           {x.sender || "—"}
                                         </span>
                                       </div>
@@ -3376,24 +3655,28 @@ export default function Workspace() {
                                       }
                                     />
                                   ) : c === "AI Route" ? (
-                                    // max-w-full and a truncating child, so a
-                                    // column narrower than the route name ellipses
-                                    // the text inside an intact pill instead of
-                                    // slicing the pill's ground off at the border.
-                                    // This is what lets the floor sit under the
-                                    // widest label rather than on top of it.
-                                    <Pill
-                                      className={cn(
-                                        tablePillClass,
-                                        "max-w-full"
-                                      )}
-                                      maxWidth="100%"
-                                      title={aiRouteLabels[x.aiRoute]}
-                                    >
-                                      <span className="min-w-0 truncate">
-                                        {aiRouteLabels[x.aiRoute]}
-                                      </span>
-                                    </Pill>
+                                    // A pill read as a verdict the queue had
+                                    // already reached. The route is the one
+                                    // decision on the row the accountant is
+                                    // most likely to disagree with, so it
+                                    // carries the same dropdown as the rest of
+                                    // the editable columns.
+                                    <EditableCell
+                                      onClosed={grid.refocusGrid}
+                                      label="AI route"
+                                      open={activeCell === `${x.id}:route`}
+                                      onOpenChange={(open) =>
+                                        setActiveCell(
+                                          open ? `${x.id}:route` : null
+                                        )
+                                      }
+                                      value={aiRouteLabels[x.route]}
+                                      options={routeLabelOptions}
+                                      editable={canEditTableItem(x)}
+                                      onChange={(value) =>
+                                        editTableField(x, "Route", value)
+                                      }
+                                    />
                                   ) : c === "GST Registration" ? (
                                     <EditableCell
                                       onClosed={grid.refocusGrid}
@@ -3446,6 +3729,36 @@ export default function Workspace() {
                                 </div>
                               </TableCell>
                             ))}
+                            <TableCell
+                              role="gridcell"
+                              // The row opens the document on click; the menu
+                              // and everything in it must not, or choosing
+                              // Delete would navigate into the record it just
+                              // removed.
+                              onClick={(e) => e.stopPropagation()}
+                              /*
+                                bg-background, not transparent: a sticky cell
+                                with no ground lets the columns it is holding
+                                still slide through it.
+
+                                The row's hover tint is then painted as a
+                                background IMAGE over that ground, not as a
+                                background colour. `group-hover:bg-muted/30`
+                                replaced the opaque colour with a 30%-alpha
+                                one, which is transparent by another name —
+                                the hovered row's Received column showed
+                                straight through the kebab. A gradient of one
+                                flat colour is the tint with the ground still
+                                under it.
+                              */
+                              className="sticky right-0 z-[1] h-[50px] border-l border-neutral-gray bg-background px-3 py-0 align-middle group-hover:[background-image:linear-gradient(hsl(var(--muted)/0.3),hsl(var(--muted)/0.3))]"
+                            >
+                              <RowActions
+                                item={x}
+                                onView={() => open(x)}
+                                onDelete={() => deleteRow(x)}
+                              />
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -3604,9 +3917,14 @@ export default function Workspace() {
                       </Button>
                       <BulkButton
                         onClick={() => {
-                          reportBulk(
-                            "Deleted",
-                            applyBulkAction(selected, "Delete")
+                          askDelete(
+                            `${selected.length} document${selected.length === 1 ? "" : "s"}`,
+                            () =>
+                              reportBulk(
+                                "Deleted",
+                                applyBulkAction(selected, "Delete")
+                              ),
+                            selected.length !== 1
                           );
                         }}
                       >
@@ -3712,46 +4030,6 @@ export default function Workspace() {
           )}
         </main>
       </div>
-      <PageDialog
-        open={!state.tourDone && !kickstartPreview}
-        title={
-          [
-            "Your review queue has moved",
-            "Receive documents in one place",
-            "Review the AI route",
-            "Approve with an audit trail",
-          ][tour]
-        }
-        description={
-          [
-            "Bill review now lives in Inbox. Accounts Payable keeps posted bills only. Your open bills are in Needs Review.",
-            "Forward email, send from a registered WhatsApp number, or upload files. Each company has its own queue.",
-            "Check Accounts Payable, Journal or Accounts Receivable. You can change the route before approving.",
-            "Approve & Next follows your filtered queue. Approved records are read-only and retain their source file.",
-          ][tour]
-        }
-      >
-        <div className={cn(band, "mt-6")}>
-          <span className={T.sub}>Step {tour + 1} of 4</span>
-          <span className="flex-1" />
-          {tour > 0 && (
-            <Button
-              variant="outline"
-              className="text-primary"
-              onClick={() => setTour((t) => t - 1)}
-            >
-              Back
-            </Button>
-          )}
-          <Button
-            onClick={() =>
-              tour === 3 ? configure({ tourDone: true }) : setTour((t) => t + 1)
-            }
-          >
-            {tour === 3 ? "Start reviewing" : "Next"}
-          </Button>
-        </div>
-      </PageDialog>
       <PageDialog
         open={dialog === "intake" || dialog === "whatsapp"}
         title={
@@ -3882,9 +4160,11 @@ export default function Workspace() {
               ? "Upload documents"
               : settledCount < files.length
                 ? `Uploading ${files.length} document${files.length === 1 ? "" : "s"}`
-                : failedCount
-                  ? `Uploaded ${uploadedCount} of ${files.length}`
-                  : "Upload complete"
+                : // What landed, counted, whether or not anything was lost.
+                  // "Uploaded 34 of 36" made the reader do the subtraction to
+                  // find the good news; the failures are named directly below,
+                  // so the header is free to say the part that went right.
+                  `${uploadedCount} Upload${uploadedCount === 1 ? "" : "s"} Successful`
         }
         // The formats and the cap moved into the drop zone, where they are read
         // at the moment of choosing rather than above the thing being chosen.
@@ -3969,6 +4249,7 @@ export default function Workspace() {
                 centred text. Built from the bulk upload frame.
               */}
               <label
+                data-guide-id="inbox-drop-zone"
                 className={cn(
                   uploadStyles.dropZone,
                   dragOver && uploadStyles.dragging
@@ -4071,9 +4352,7 @@ export default function Workspace() {
                   aria-label="Other ways to send documents"
                   className={uploadStyles.channels}
                 >
-                  <span className={uploadStyles.channelsTitle}>
-                    Or send in
-                  </span>
+                  <span className={uploadStyles.channelsTitle}>Or send in</span>
                   <span className={uploadStyles.channel}>
                     <Mail aria-hidden />
                     <code>{company.slug}@inbox.aiaccountant.app</code>
@@ -4119,7 +4398,10 @@ export default function Workspace() {
             </>
           )}
           {files.length > 0 && (
-            <section className="space-y-3">
+            <section
+              data-guide-id="inbox-upload-progress"
+              className="space-y-3"
+            >
               {/*
                 The same drawing the Tally sync run uses: a count that is the
                 headline, and the documents themselves naming what has landed.
@@ -4227,28 +4509,17 @@ export default function Workspace() {
                   </ul>
                 </section>
               )}
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex items-baseline justify-between gap-4"
-              >
-                <p className={T.sub}>
-                  {busy && failedCount > 0
-                    ? `${failedCount} failed`
-                    : busy || failedCount
-                      ? `${fileSize(files.reduce((sum, f) => sum + f.size, 0))} total`
-                      : null}
-                </p>
-                {/* At the end, the place this is handing you to — and on a run
-                    that stopped short, where the rest of it went. */}
-                <p className={cn(T.sub, "min-w-0 truncate text-right")}>
-                  {handoff
-                    ? "Extracting in the Inbox…"
-                    : !busy && failedCount
-                      ? `${uploadedCount} extracting in the Inbox`
-                      : null}
-                </p>
-              </div>
+              {/*
+                The batch size and the handoff line are gone.
+
+                Every fact on that row is said better somewhere else by the
+                time it appears: the header counts what landed, the drawing
+                counts what failed, and the list underneath names them. What
+                was left was a total in megabytes — a number nobody acts on —
+                beside a sentence about where the good documents went, on a
+                panel whose whole subject at that moment is the ones that did
+                not.
+              */}
             </section>
           )}
           {/* A run that stopped short is the only one that ends on buttons. A
@@ -4312,9 +4583,8 @@ export default function Workspace() {
             variant="outline"
             className="text-primary"
             onClick={() => {
-              configure({ tourDone: false });
-              setTour(0);
               setDialog("");
+              guide.startJourney("inbox");
             }}
           >
             Replay launch guide
@@ -4388,6 +4658,47 @@ export default function Workspace() {
                 </pre>
               </details>
             ))}
+        </div>
+      </PageDialog>
+      {/*
+        One dialog for every Delete on the screen — the row kebab, the
+        selection bar, the review page and the register all set the same
+        state. Separate confirmations drift: four wordings for one act, and
+        the one that gets skipped is the one someone forgot to add.
+
+        Delete stays the primary button rather than hiding behind Cancel.
+        The reader opened this by choosing Delete; making them hunt for it a
+        second time is friction spent on the answer they already gave. Cancel
+        is first and takes the Escape key, which is where a change of mind
+        actually goes.
+      */}
+      <PageDialog
+        open={!!confirmDelete}
+        // Names the thing in the title, so a selection of twelve and a single
+        // file are not the same sentence with the count buried in the body.
+        title={`Delete ${confirmDelete?.target ?? "this document"}?`}
+        onClose={() => setConfirmDelete(null)}
+        className="max-w-[460px]"
+      >
+        <p className={T.value}>
+          {confirmDelete?.many
+            ? "They move to the Deleted tab. Nothing is removed from Tally, and you can restore them from there."
+            : "It moves to the Deleted tab. Nothing is removed from Tally, and you can restore it from there."}
+        </p>
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setConfirmDelete(null)}>
+            Cancel
+          </Button>
+          <Button
+            isDestructive
+            onClick={() => {
+              confirmDelete?.run();
+              setConfirmDelete(null);
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </Button>
         </div>
       </PageDialog>
       <PageDialog
@@ -4543,10 +4854,7 @@ export default function Workspace() {
       inboxNew={withinNewWindow(state.launchedAt)}
       activeNavId={navId}
       onNavSelect={selectNav}
-      onGuide={() => {
-        configure({ tourDone: false });
-        setTour(0);
-      }}
+      onGuide={guide.openLauncher}
       companies={companies.map((c) => ({ id: c.id, name: c.name }))}
       companyId={state.company}
       onCompanyChange={changeCompany}
@@ -4627,8 +4935,54 @@ const BulkButton = ({
   </Button>
 );
 
-/** The four fields a selection can be reassigned on, in the bar's order. */
+/**
+ * Per-row actions, behind a kebab.
+ *
+ * View and Delete only. Everything else a row can do — approve, retry, convert
+ * — is either a bulk action on the bar or a decision the detail view is built
+ * to take with the document in front of you; a menu that repeats them makes
+ * the row a second, smaller version of the screen it opens.
+ *
+ * A row already in the Deleted tab drops Delete altogether: it is a no-op
+ * dressed as a choice, and the store's guard would refuse it anyway.
+ */
+const RowActions = ({
+  item,
+  onView,
+  onDelete,
+}: {
+  item: Item;
+  onView: () => void;
+  onDelete: () => void;
+}) => (
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        aria-label={`Actions for ${item.file.name}`}
+      >
+        <MoreVertical className="h-4 w-4" />
+      </Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align="end">
+      <DropdownMenuItem onSelect={onView}>View</DropdownMenuItem>
+      {item.status !== "Deleted" && (
+        <DropdownMenuItem onSelect={onDelete}>Delete</DropdownMenuItem>
+      )}
+    </DropdownMenuContent>
+  </DropdownMenu>
+);
+
+/**
+ * The fields a selection can be reassigned on, in the bar's order.
+ *
+ * Route leads: it decides which module the rest of the row belongs to, and a
+ * vendor or ledger chosen before it is a value set against the wrong one.
+ */
 const BULK_FIELDS: BulkField[] = [
+  "Route",
   "Vendor",
   "GST Registration",
   "Voucher Type",

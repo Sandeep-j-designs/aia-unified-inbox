@@ -14,6 +14,12 @@ export const COLUMN_SIZES: Record<
   Status: { min: 120, preferred: 130, max: 200 },
 };
 export const SELECT_WIDTH = 40;
+/**
+ * The kebab column. Fixed, like the checkbox: it holds one 32px button, so
+ * there is nothing in it for extra width to do, and both bookends stay out of
+ * the distribution below.
+ */
+export const ACTIONS_WIDTH = 78;
 export const DEFAULT_WIDTHS = Object.fromEntries(
   Object.entries(COLUMN_SIZES).map(([key, size]) => [key, size.preferred])
 );
@@ -62,7 +68,9 @@ export function sizeColumns(
       minimum,
       Math.min(
         maximum,
-        available === null ? preferred : available - SELECT_WIDTH
+        available === null
+          ? preferred
+          : available - SELECT_WIDTH - ACTIONS_WIDTH
       )
     )
   );

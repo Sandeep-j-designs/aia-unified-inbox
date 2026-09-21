@@ -43,7 +43,42 @@ config/pages/inbox/        →  aiaccountant-app/config/pages/inbox/
 types/pages/inbox/         →  aiaccountant-app/types/pages/inbox/
 utils/pages/inbox/         →  aiaccountant-app/utils/pages/inbox/
 pages/inbox/               →  aiaccountant-app/pages/inbox/
+components/guide/          →  MERGE — production has its own GuideProvider
+hooks/pages/guide/         →  aiaccountant-app/hooks/pages/guide/
+config/pages/guide/        →  aiaccountant-app/config/pages/guide/
+types/pages/guide/         →  aiaccountant-app/types/pages/guide/
 ```
+
+### The guided walkthrough
+
+`components/guide/` is the Guide button's launcher and the anchored step card.
+Production already drives this through Usertour, so the parts that move across
+are the **Inbox journey itself** — `config/pages/guide/inbox-tour.ts`, seven
+steps — and the `data-guide-id` attributes the steps point at, which are on
+elements inside `components/inbox/` and `components/sidebar-layout/`. Keep the
+attributes; re-point them at whatever the guide service calls a selector.
+
+`GuideProvider` is mounted in `pages/_app.tsx`, which is a file that gets
+deleted at handoff — production mounts its own there already.
+
+The journey **demonstrates** the flow: `components/guide/actions.ts` is a
+window-event contract the workspace listens on, and three of the thirteen steps
+use it — open the upload panel, send three mock bills through the real upload
+and extraction path (`demoUploadDocuments`, the same seam the first-run sample
+batch uses), and open the document that arrived. The viewer only presses Next.
+Ending the journey — finished or skipped — sends `reset-demo`, which puts the
+company back to its seed state through `resetCompany` in the store and returns
+to the empty Inbox, so the walkthrough can be watched again.
+Delete `actions.ts` and the listener in `workspace.tsx` on transplant:
+production's guide service narrates the user's own upload instead.
+
+The journey runs upload → review in thirteen steps, so two of its anchors sit
+inside the AP bill sheet: `data-guide-id="inbox-preview"` on `#doc-pane` and
+`data-guide-id="inbox-fields"` on `section.form`, in **both**
+`public/ap/index.html` (the source of truth) and `public/ap/sheet.html` (the
+built artifact the screen actually loads). `scripts/sync-ap-sheet.cjs` will
+drop them if it overwrites either file — re-add them, or those two steps fall
+back to a centred card with no highlight.
 
 ## Files to delete
 

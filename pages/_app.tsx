@@ -2,6 +2,7 @@ import "@/styles/globals.css";
 import type { AppProps } from "next/app";
 import localFont from "next/font/local";
 import { Toaster } from "@/components/ui/sonner";
+import GuideProvider from "@/components/guide/guide-provider";
 
 const open_sans = localFont({
   src: "../public/fonts/open-sans-latin.woff2",
@@ -30,7 +31,11 @@ export default function App({ Component, pageProps }: AppProps) {
             ${open_sans.style.fontFamily}, system-ui, sans-serif;
         }
       `}</style>
-      <Component {...pageProps} />
+      {/* GuideProvider is mounted in production's _app.tsx too — a journey
+          outlives the route it starts on, so it cannot live inside one. */}
+      <GuideProvider>
+        <Component {...pageProps} />
+      </GuideProvider>
       <Toaster position="bottom-center" closeButton />
     </div>
   );

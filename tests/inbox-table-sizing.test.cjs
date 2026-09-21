@@ -6,7 +6,9 @@ const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../components/inbox/v2/table-sizing.ts'), 'utf8');
 const output = {};
 vm.runInNewContext('(function(exports){' + ts.transpileModule(source, {compilerOptions:{module:ts.ModuleKind.CommonJS, target:ts.ScriptTarget.ES2020}}).outputText + '\n})', {})(output);
-const {COLUMN_SIZES: rules, SELECT_WIDTH, sizeColumns, readWidths} = output;
+const {COLUMN_SIZES: rules, SELECT_WIDTH, ACTIONS_WIDTH, sizeColumns, readWidths} = output;
+// Both fixed bookends — the checkbox and the kebab — sit outside the distribution.
+const FIXED = SELECT_WIDTH + ACTIONS_WIDTH;
 const columns = Object.keys(rules);
 const plain = value => JSON.parse(JSON.stringify(value));
 // Exercise every visibility combination through narrow, normal, and wide containers.
@@ -17,7 +19,7 @@ for (let mask = 1; mask < 2 ** columns.length; mask++) {
   for (const available of [320, 768, 1024, 1240, 1440, 1920, 2560, 4000]) {
     const sizes = sizeColumns(shown, available, {});
     for (const c of shown) assert(sizes[c] >= rules[c].min && sizes[c] <= rules[c].max, `${c} is readable and bounded`);
-    assert.equal(Object.values(sizes).reduce((a,b)=>a+b,0), Math.max(min, Math.min(max, available - SELECT_WIDTH)), 'no rounding overflow or unallocated fit space');
+    assert.equal(Object.values(sizes).reduce((a,b)=>a+b,0), Math.max(min, Math.min(max, available - FIXED)), 'no rounding overflow or unallocated fit space');
   }
 }
 const snapshot = sizeColumns(columns, 1920, {});

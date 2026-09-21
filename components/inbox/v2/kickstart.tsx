@@ -30,6 +30,66 @@ const steps = [
   { label: "Review", icon: ShieldCheck },
 ];
 
+/**
+ * The line-art that fills each channel card, bled off its right edge.
+ *
+ * It draws what the channel carries — paper, post, a conversation — at an
+ * opacity where it reads as surface rather than as content. That is the point:
+ * the cards each lost a line of subtext that only restated the heading, and a
+ * motif fills the space the sentence held without asking to be read.
+ *
+ * Inherits `color` from the card, so each one is tinted by its own channel and
+ * nothing here carries a palette of its own. `strokeWidth` stays at 1.3 to
+ * match the illustration in the demo card above.
+ */
+const ChannelMotif = ({ kind }: { kind: "upload" | "email" | "whatsapp" }) => (
+  <span className={s.channelMotif} aria-hidden>
+    <svg
+      viewBox="0 0 120 96"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.3}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {kind === "upload" && (
+        /* A fanned stack: three sheets, the front one dog-eared. */
+        <>
+          <rect x="18" y="24" width="46" height="60" rx="4" />
+          <g transform="rotate(8 60 54)">
+            <rect x="36" y="18" width="46" height="60" rx="4" />
+          </g>
+          <g transform="rotate(16 78 48)">
+            <path d="M54 12h30l12 12v48a4 4 0 0 1-4 4H54a4 4 0 0 1-4-4V16a4 4 0 0 1 4-4Z" />
+            <path d="M84 12v12h12" />
+            <path d="M60 44h24M60 56h24M60 68h14" />
+          </g>
+        </>
+      )}
+      {kind === "email" && (
+        /* Two envelopes, the back one only just showing. */
+        <>
+          <rect x="10" y="30" width="62" height="44" rx="4" />
+          <path d="M10 34l31 22 31-22" />
+          <g transform="rotate(-10 88 44)">
+            <rect x="52" y="16" width="62" height="44" rx="4" />
+            <path d="M52 20l31 22 31-22" />
+          </g>
+        </>
+      )}
+      {kind === "whatsapp" && (
+        /* A reply arriving over the message it answers. */
+        <>
+          <path d="M14 26a6 6 0 0 1 6-6h40a6 6 0 0 1 6 6v22a6 6 0 0 1-6 6H34l-14 12V54a6 6 0 0 1-6-6Z" />
+          <path d="M28 32h24M28 42h16" />
+          <path d="M106 52a6 6 0 0 0-6-6H66a6 6 0 0 0-6 6v18a6 6 0 0 0 6 6h26l14 10V70a6 6 0 0 0 0-6Z" />
+          <path d="M74 58h18" />
+        </>
+      )}
+    </svg>
+  </span>
+);
+
 /** A bounded, interactive example explains intake without adding demo records. */
 export default function InboxKickstart({
   companyName,
@@ -223,15 +283,19 @@ export default function InboxKickstart({
                   onUpload(event.dataTransfer.files);
               }}
             >
+              <ChannelMotif kind="upload" />
               <span className={s.channelIcon}>
                 <Upload size={23} aria-hidden />
               </span>
               <div className={s.channelText}>
                 <h4>{dragOver ? "Release to upload" : "Upload a document"}</h4>
-                <p>Drop files here or browse your device.</p>
               </div>
               <div className={s.channelAction}>
-                <Button className={s.uploadButton} onClick={() => onUpload()}>
+                <Button
+                  data-guide-id="inbox-upload"
+                  className={s.uploadButton}
+                  onClick={() => onUpload()}
+                >
                   <Upload size={16} aria-hidden /> Upload files{" "}
                   <ArrowRight size={16} aria-hidden />
                 </Button>
@@ -247,15 +311,15 @@ export default function InboxKickstart({
               )}
             </article>
             <article className={cn(s.channel, s.email)}>
+              <ChannelMotif kind="email" />
               <span className={s.channelIcon}>
                 <Mail size={23} aria-hidden />
               </span>
               <div className={s.channelText}>
                 <h4>Forward an email</h4>
-                <p>Forward your bills and invoices.</p>
               </div>
               <div className={s.channelAction}>
-                <div className={s.emailAddress}>
+                <div className={s.emailAddress} data-guide-id="inbox-email">
                   <code>{email}</code>
                   <Button
                     variant="ghost"
@@ -278,15 +342,16 @@ export default function InboxKickstart({
               </div>
             </article>
             <article className={cn(s.channel, s.whatsapp)}>
+              <ChannelMotif kind="whatsapp" />
               <span className={s.channelIcon}>
                 <MessageCircle size={23} aria-hidden />
               </span>
               <div className={s.channelText}>
                 <h4>Send on WhatsApp</h4>
-                <p>Send from your registered number.</p>
               </div>
               <div className={s.channelAction}>
                 <Button
+                  data-guide-id="inbox-whatsapp"
                   variant="ghost"
                   className={s.whatsappButton}
                   onClick={onWhatsApp}
