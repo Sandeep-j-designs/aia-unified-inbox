@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AR_SHEET_VERSION } from "@/components/inbox/v2/ar-sheet-version";
 import { supersedeSheets } from "@/components/inbox/v2/sheet-generation";
+import { asset } from "@/lib/base-path";
 
 /**
  * The sales invoice sheet, mounted into the inbox's OWN document.
@@ -42,13 +43,13 @@ const ArSheet = ({ itemId }: Props) => {
     const link = document.createElement("link");
     link.id = CSS_ID;
     link.rel = "stylesheet";
-    link.href = `/ar/sheet.css?v=${AR_SHEET_VERSION}`;
+    link.href = asset(`/ar/sheet.css?v=${AR_SHEET_VERSION}`);
     document.head.append(link);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    void fetch(`/ar/sheet.html?v=${AR_SHEET_VERSION}`)
+    void fetch(asset(`/ar/sheet.html?v=${AR_SHEET_VERSION}`))
       .then((r) => r.text())
       .then((html) => {
         if (!cancelled) setMarkup(html);
@@ -94,7 +95,9 @@ const ArSheet = ({ itemId }: Props) => {
     const script = document.createElement("script");
     // The version is what actually busts the cache; the item is there so the
     // request is legible in the network panel next to the invoice it belongs to.
-    script.src = `/ar/sheet.js?v=${AR_SHEET_VERSION}&item=${encodeURIComponent(itemId)}`;
+    script.src = asset(
+      `/ar/sheet.js?v=${AR_SHEET_VERSION}&item=${encodeURIComponent(itemId)}`
+    );
     document.body.append(script);
     return () => {
       script.remove();

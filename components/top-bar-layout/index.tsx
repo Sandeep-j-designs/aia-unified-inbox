@@ -20,14 +20,13 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * What the deployed site is served under — "" locally, the repo name on Pages.
- *
  * `next/image` prefixes basePath itself for an optimised image, but not for an
  * `unoptimized` one: the src is passed through as written. On Pages that made
  * the logo a request to /images/logo.png at the domain root, one level above
- * the site, and the only broken asset on the page.
+ * the site. The base path now lives in one module, because the same gap later
+ * took out the AP and AR sheets — see lib/base-path.
  */
-const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+import { basePath } from "@/lib/base-path";
 
 /** Bloocks TopNav styling with the prototype's company and sync actions. */
 
@@ -82,7 +81,10 @@ const AppTopBar = ({
   // SelectTrigger clamps direct spans with display: -webkit-box. Keep the
   // avatar's flex layout so that rule cannot push the initial to the top.
   const initialsBadge = (
-    <span aria-hidden="true" className="!inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[4.5px] bg-surface-badge text-[11px] leading-none font-bold text-primary-foreground">
+    <span
+      aria-hidden="true"
+      className="!inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[4.5px] bg-surface-badge text-[11px] leading-none font-bold text-primary-foreground"
+    >
       {company.initials}
     </span>
   );

@@ -4,6 +4,7 @@ import { StatusPill } from "./ui";
 import type { Item } from "./store";
 import { AP_SHEET_VERSION } from "@/components/inbox/v2/ap-sheet-version";
 import { supersedeSheets } from "@/components/inbox/v2/sheet-generation";
+import { asset } from "@/lib/base-path";
 
 /**
  * The bills review sheet, mounted into the inbox's OWN document.
@@ -65,13 +66,13 @@ const ApSheet = ({ itemId, status }: Props) => {
     const link = document.createElement("link");
     link.id = CSS_ID;
     link.rel = "stylesheet";
-    link.href = `/ap/sheet.css?v=${AP_SHEET_VERSION}`;
+    link.href = asset(`/ap/sheet.css?v=${AP_SHEET_VERSION}`);
     document.head.append(link);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    void fetch(`/ap/sheet.html?v=${AP_SHEET_VERSION}`)
+    void fetch(asset(`/ap/sheet.html?v=${AP_SHEET_VERSION}`))
       .then((r) => r.text())
       .then((html) => {
         if (!cancelled) setMarkup(html);
@@ -120,7 +121,9 @@ const ApSheet = ({ itemId, status }: Props) => {
     const script = document.createElement("script");
     // The version is what actually busts the cache; the item is there so the
     // request is legible in the network panel next to the bill it belongs to.
-    script.src = `/ap/sheet.js?v=${AP_SHEET_VERSION}&item=${encodeURIComponent(itemId)}`;
+    script.src = asset(
+      `/ap/sheet.js?v=${AP_SHEET_VERSION}&item=${encodeURIComponent(itemId)}`
+    );
     document.body.append(script);
     return () => {
       script.remove();
