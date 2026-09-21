@@ -4681,15 +4681,18 @@ export default function Workspace() {
       >
         <p className={T.value}>
           {confirmDelete?.many
-            ? "They are removed from the Inbox. Nothing is posted to Tally, and this can’t be undone."
-            : "It is removed from the Inbox. Nothing is posted to Tally, and this can’t be undone."}
+            ? "They are removed from the Inbox. This can’t be undone."
+            : "It is removed from the Inbox. This can’t be undone."}
         </p>
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setConfirmDelete(null)}>
             Cancel
           </Button>
+          {/* The ordinary primary button. Red is for damage — money moved,
+              a record destroyed, something that reaches outside this screen.
+              A document leaving the Inbox is none of that, and a palette that
+              shouts at every removal has nothing left for the day it matters. */}
           <Button
-            isDestructive
             onClick={() => {
               confirmDelete?.run();
               setConfirmDelete(null);
@@ -4904,7 +4907,14 @@ const BlockedReason = ({
     <>{children}</>
   );
 
-/** AP's .btn--danger — quiet until you reach for it. */
+/**
+ * The review page's Delete — an outline button like the rest of the bar.
+ *
+ * It was red. Removing a document from the Inbox is not damage: nothing is
+ * posted, nothing is destroyed outside this screen, and the confirmation is
+ * what makes it deliberate. Red spent on it is red unavailable for something
+ * that does reach outside.
+ */
 const DangerButton = ({
   children,
   onClick,
@@ -4915,7 +4925,7 @@ const DangerButton = ({
   <Button
     variant="outline"
     onClick={onClick}
-    className="h-8 border-current px-3 text-xs text-destructive-foreground hover:bg-destructive hover:text-destructive-foreground"
+    className="h-8 px-3 text-xs text-primary"
   >
     {children}
   </Button>
@@ -4929,7 +4939,14 @@ const BulkButton = ({
   children: React.ReactNode;
   onClick: () => void;
 }) => (
-  <Button variant="outline" size="sm" onClick={onClick} isDestructive>
+  // Same reasoning as DangerButton: it matches the reassign dropdowns beside
+  // it, and Approve stays the only filled button on the bar.
+  <Button
+    variant="outline"
+    size="sm"
+    onClick={onClick}
+    className="whitespace-nowrap text-primary"
+  >
     {children}
   </Button>
 );
