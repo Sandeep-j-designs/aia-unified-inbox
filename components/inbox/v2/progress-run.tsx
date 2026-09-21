@@ -68,6 +68,109 @@ const useSettling = (target: number) => {
   return shown;
 };
 
+/**
+ * Keeps a scroller pinned to its own bottom while rows keep arriving.
+ *
+ * `scrollTo({ behavior: "smooth" })` is the obvious way to do this and it is
+ * why the list stuttered. Native smooth scrolling is a fresh animation per
+ * call: at one row every 120ms it was cancelled and restarted three times
+ * before it could finish, each restart beginning from zero velocity. The list
+ * lurched once per document instead of travelling once.
+ *
+ * One loop instead, holding its own position and retargeting every frame. New
+ * rows move the target; they do not restart anything, so the motion carries
+ * its speed across arrivals and reads as a single drift. The smoothing is
+ * exponential and scaled by real elapsed time, so it behaves the same on a
+ * 120Hz display as on a 60Hz one, and it self-terminates when it lands.
+ *
+ * TAU is the time to close ~63% of the remaining distance; the eye reads the
+ * ~3x of that as the settle. 90ms sits just under the cadence of the run.
+ */
+const TAU = 90;
+const useStickToBottom = (
+  ref: React.RefObject<HTMLElement>,
+  trigger: number
+) => {
+  /*
+    Whether the list is still following.
+
+    A reader who scrolls up to check a filename has taken control, and being
+    yanked back to the bottom on the next arrival is the rudest thing a live
+    list can do. So: any scroll that was not this loop's own hands the list
+    over, and getting back to the bottom hands it back.
+
+    Told apart by what was last written rather than by listening for wheel and
+    touch and keys and scrollbar drags separately — the loop knows exactly
+    where it put the scroll, so anything else is someone else.
+  */
+  const following = useRef(true);
+  const written = useRef(-1);
+  const frame = useRef(0);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onScroll = () => {
+      if (Math.abs(el.scrollTop - written.current) < 1.5) return;
+      // 24px of slack: the list runs a little behind the bottom while it is
+      // catching up, and that lag must not read as the reader scrolling away.
+      following.current = el.scrollHeight - el.clientHeight - el.scrollTop < 24;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [ref]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !following.current) return;
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      el.scrollTop = el.scrollHeight - el.clientHeight;
+      return;
+    }
+
+    let last = 0;
+    const step = (now: number) => {
+      // Checked every frame, not just at the start: a reader who scrolls up
+      // mid-flight would otherwise be dragged the rest of the way by a loop
+      // that had already made up its mind.
+      if (!following.current) return;
+      const dt = last ? Math.min(now - last, 64) : 16;
+      last = now;
+      // Recomputed per frame: this is what lets a row arriving mid-flight
+      // extend the journey instead of interrupting it.
+      const target = el.scrollHeight - el.clientHeight;
+      const distance = target - el.scrollTop;
+      /*
+        Land, rather than approach forever.
+
+        scrollTop is stored in whole pixels, so an exponential step is rounded
+        away once the remaining distance is small: at 2px to go the step is
+        0.33px, which rounds to no movement at all. The list sat a pixel or
+        two short of the bottom with the loop still running every frame,
+        burning a wake-up per frame to move nothing.
+
+        Inside a pixel of the target, take it. Outside, never step less than a
+        whole pixel, so progress always survives the rounding.
+      */
+      if (Math.abs(distance) < 1) {
+        el.scrollTop = target;
+        written.current = el.scrollTop;
+        return;
+      }
+      const stride = distance * (1 - Math.exp(-dt / TAU));
+      el.scrollTop += Math.abs(stride) < 1 ? Math.sign(distance) : stride;
+      written.current = el.scrollTop;
+      frame.current = requestAnimationFrame(step);
+    };
+
+    frame.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame.current);
+  }, [ref, trigger]);
+};
+
 /** "29 / 47 Bills", and the bar under it. */
 export const RunCount = ({
   settled,
@@ -111,10 +214,20 @@ export const RunRowItem = ({ row }: { row: RunRow }) => (
       // A fixed height, so a row changing state cannot resize the list under
       // the rows below it.
       "flex h-[42px] items-center gap-3 border-b border-neutral-gray px-3 last:border-b-0",
-      // The row arrives rather than appears. 180ms is under the cadence of the
-      // run itself, so a row has finished entering before the next one starts.
-      "animate-in fade-in-0 slide-in-from-bottom-1 duration-200 ease-out motion-reduce:animate-none",
-      "transition-colors duration-300 motion-reduce:transition-none",
+      /*
+        Fades in where it lands, without sliding.
+
+        It used to slide up as it appeared, which put two movements on one
+        row: its own, and the list scrolling underneath it. The two ran on
+        different clocks and the row appeared to wobble into place. The scroll
+        is the movement now; the fade is only there so the row does not snap
+        into existence at full strength.
+
+        200ms is under the cadence of the run, so a row has finished entering
+        before the next one starts.
+      */
+      "animate-in fade-in-0 duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none",
+      "transition-colors duration-200 motion-reduce:transition-none",
       // The left border is always there and usually transparent: adding one to
       // the active row would shift its text 2px sideways as it lights up.
       "border-l-2 border-l-transparent",
@@ -122,12 +235,15 @@ export const RunRowItem = ({ row }: { row: RunRow }) => (
     )}
   >
     <span className="relative flex h-[18px] w-[18px] flex-none items-center justify-center">
+      {/* zoom-in-95, not 50: a tick that grows from half size pops, and
+          thirty-four pops in a row is the list twitching. It should read as
+          the state settling, which is a fade with the faintest swell. */}
       {row.state === "done" ? (
-        <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-status-success animate-in zoom-in-50 duration-200 ease-out motion-reduce:animate-none">
+        <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-status-success animate-in fade-in-0 zoom-in-95 duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none">
           <Check className="h-3 w-3 text-white" strokeWidth={3} />
         </span>
       ) : row.state === "failed" ? (
-        <XCircle className="h-[18px] w-[18px] text-status-error animate-in zoom-in-50 duration-200 ease-out motion-reduce:animate-none" />
+        <XCircle className="h-[18px] w-[18px] text-status-error animate-in fade-in-0 zoom-in-95 duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none" />
       ) : (
         <Loader2 className="h-[18px] w-[18px] animate-spin text-primary" />
       )}
@@ -154,32 +270,8 @@ export const RunRowList = ({
 }) => {
   const listRef = useRef<HTMLDivElement>(null);
 
-  /*
-    The row that matters is the one in flight, and it is always last.
-
-    Scrolled smoothly, and by animation frame rather than by assignment: at one
-    row every 120ms, jumping `scrollTop` to the bottom moved the list 42px per
-    step with nothing in between, which read as the list flinching each time a
-    document landed. Now it glides, and the rows entering at the bottom glide
-    with it.
-  */
-  useEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-    const reduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-    const target = list.scrollHeight - list.clientHeight;
-    if (reduced) {
-      list.scrollTop = target;
-      return;
-    }
-    // rAF so the row added in this same commit is measured before the scroll.
-    const frame = requestAnimationFrame(() =>
-      list.scrollTo({ top: target, behavior: "smooth" })
-    );
-    return () => cancelAnimationFrame(frame);
-  }, [settled]);
+  // The row that matters is the one in flight, and it is always last.
+  useStickToBottom(listRef, settled);
 
   return (
     <div
