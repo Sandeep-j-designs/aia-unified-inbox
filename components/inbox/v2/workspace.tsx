@@ -36,6 +36,7 @@ import {
   PinOff,
   RotateCcw,
   Search,
+  Sparkles,
   Keyboard,
   Lightbulb,
   Slash,
@@ -2103,8 +2104,24 @@ export default function Workspace() {
                       is the buyer on this vendor invoice", which is an argument
                       for the opposite of what the chip beside it says.
                     */}
+                    {/*
+                      Marked as the AI's line rather than the screen's: the
+                      sparkle and the primary tint say a model wrote this,
+                      which the muted grey it used to wear did not.
+                    */}
                     {item.reason && item.route === item.aiRoute && (
-                      <span className={T.sub}>{item.reason}</span>
+                      <span
+                        className={cn(
+                          T.sub,
+                          "inline-flex items-center gap-1.5 text-primary"
+                        )}
+                      >
+                        <Sparkles
+                          className="h-3.5 w-3.5 shrink-0"
+                          aria-hidden="true"
+                        />
+                        {item.reason}
+                      </span>
                     )}
                     {item.route !== item.aiRoute && (
                       <Pill tone="warn">
