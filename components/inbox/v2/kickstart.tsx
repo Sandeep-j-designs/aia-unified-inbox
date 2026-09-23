@@ -26,7 +26,7 @@ type Props = {
 };
 const steps = [
   { label: "Classify", icon: Inbox },
-  { label: "Prepare", icon: FileText },
+  { label: "Prepare", icon: Sparkles },
   { label: "Review", icon: ShieldCheck },
 ];
 
@@ -125,14 +125,15 @@ export default function InboxKickstart({
         <div className={s.pitch}>
           <div className={s.intro}>
             <div className={s.eyebrow}>
-              <span /> YOUR PAPERWORK, SIMPLIFIED
+              <span /> AI ACCOUNTANT · DOCUMENT INBOX
             </div>
             <h2 id="inbox-kickstart-title">
               All your documents. <span>One inbox.</span>
             </h2>
             <p>
-              Send a bill, invoice, or journal. We’ll prepare the details. You
-              review before anything is posted.
+              Send a bill, invoice, or journal. AI Accountant reads it, prepares
+              the details, and suggests where it belongs. You review before
+              anything is posted.
             </p>
           </div>
 
@@ -215,7 +216,7 @@ export default function InboxKickstart({
                     [
                       "Every document, one destination",
                       "The details take care of themselves",
-                      "Prepared by AI. Approved by you.",
+                      "Prepared by AI Accountant. Approved by you.",
                     ][step]
                   }
                 </strong>

@@ -267,7 +267,7 @@ const EMPTY_STATES: Record<string, { title: string; body: string }> = {
   },
   "Need review": {
     title: "Nothing waiting on you",
-    body: "You are caught up. New documents appear here as soon as they are read.",
+    body: "You are caught up. New documents appear here when AI Accountant has prepared them for your review.",
   },
   Approved: {
     title: "No approved documents yet",
@@ -2344,7 +2344,7 @@ export default function Workspace() {
                     <p className={T.value}>
                       {item.status === "Received"
                         ? "File received — extraction is about to start."
-                        : "We’re parsing the document and predicting route and ledgers."}
+                        : "AI Accountant is reading the document, preparing its details, and suggesting the right voucher and ledgers."}
                     </p>
                   </EmptyState>
                 </>
@@ -2770,14 +2770,14 @@ export default function Workspace() {
                           className="mx-6 mb-3 flex items-center gap-2 rounded-md border border-neutral-gray bg-accent/40 px-3 py-2 text-sm text-secondary-foreground"
                         >
                           <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                          Extracting{" "}
+                          AI Accountant is preparing{" "}
                           {
                             all.filter((item) =>
                               ["Received", "Extracting"].includes(item.status)
                             ).length
                           }{" "}
-                          documents. Results appear automatically as each
-                          document is ready.
+                          documents. Each one appears automatically when it is
+                          ready for review.
                         </div>
                       )}
                     {!moduleRoute && (

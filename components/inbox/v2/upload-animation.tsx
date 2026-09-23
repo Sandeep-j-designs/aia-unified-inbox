@@ -59,7 +59,7 @@ export default function UploadAnimation({
           </strong>
           <span className={s.label}>documents uploaded</span>
         </div>
-        <span className={s.status}>
+        <span className={s.status} role="status" aria-live="polite">
           {success
             ? "Ready for your inbox"
             : complete
@@ -67,7 +67,7 @@ export default function UploadAnimation({
                 // reader: "need attention" is a prompt, and the failure list
                 // right below is already the prompt.
                 `${failed} Failed`
-              : "Bringing your documents together"}
+              : "AI Accountant prepares every document"}
         </span>
       </div>
       <div
