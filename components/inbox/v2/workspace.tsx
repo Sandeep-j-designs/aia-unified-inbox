@@ -309,8 +309,11 @@ const sourceLabels = { email: "Email", whatsapp: "WhatsApp", upload: "Upload" };
  * post, and "Purchase Voucher" is the thing they post. "Accounts Payable" is
  * where it ends up afterwards, which the module pages already say.
  *
+ * The Post as picker names vouchers too: it is the same decision the column
+ * reports, so the two read as one thought rather than two vocabularies.
+ *
  * Separate from `routeNames`, which stays the name of the module itself — the
- * Post as picker, the registers and the sync modal all name modules.
+ * registers and the sync modal name modules, because those are places, not acts.
  *
  * Lives in the store now, because the selection bar sets the route by the same
  * label and the reverse lookup has to agree with this one.
@@ -2091,7 +2094,7 @@ export default function Workspace() {
                           .filter((r) => state.permissions.includes(r))
                           .map((r) => (
                             <SelectItem key={r} value={r}>
-                              {routeNames[r]}
+                              {ROUTE_LABELS[r]}
                             </SelectItem>
                           ))}
                       </SelectContent>
