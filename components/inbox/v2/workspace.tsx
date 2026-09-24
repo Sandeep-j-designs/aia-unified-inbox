@@ -340,21 +340,21 @@ const defaultColumns = (companyId: string) =>
   );
 const RESIZABLE = new Set(columns);
 /**
- * Pinning is what locks a column. A pinned column holds the front of the grid
- * and cannot be dragged while pinned.
+ * Locking and pinning are separate.
  *
- * File is pinned permanently, not by default: it identifies the row at all,
- * so it carries a padlock rather than a pin toggle and its visibility checkbox
- * is fixed on. The arrangement is the user's everywhere else.
+ * A locked column is always shown: its visibility checkbox is fixed on and it
+ * carries a padlock. File and Status are locked, because File identifies the
+ * row at all and Status is what the accountant reads to decide whether to open
+ * it, so a queue missing either cannot be worked.
  *
- * Status was locked beside File until 24 Sep 2026, when the default order
- * moved it after Amount. A locked column is pinned to the front, so Status is
- * now an ordinary column: it sits where the order puts it, and can be pinned,
- * moved or hidden like the rest.
+ * A pinned column holds the front of the grid and cannot be dragged while
+ * pinned. Any column can be pinned, locked or not. File is pinned by default;
+ * Status sits where the default order puts it, after Amount, until someone
+ * pins it.
  */
-const LOCKED_COLUMNS = new Set(["File"]);
-/** The locked column leads the grid. */
-const DEFAULT_PINNED = columns.filter((c) => LOCKED_COLUMNS.has(c));
+const LOCKED_COLUMNS = new Set(["File", "Status"]);
+/** File leads the grid until someone unpins it. */
+const DEFAULT_PINNED = ["File"];
 /**
  * Motion for the Columns list. One duration and one curve for the rows sliding
  * aside and for the dragged row settling into its slot, so the drop reads as
@@ -820,23 +820,11 @@ export default function Workspace() {
         }
       }
       const pn = sessionStorage.getItem("inbox.pinned.v4");
-      /*
-        The locked pair is re-asserted over whatever was stored, and leads it.
-
-        A session saved while File and Status could still be unpinned is a
-        session that would come back without them at the front — restoring a
-        layout the screen no longer allows anyone to reach.
-      */
-      const storedPins: string[] = [
-        ...DEFAULT_PINNED,
-        ...(pn
-          ? JSON.parse(pn).filter(
-              (c: unknown) =>
-                columns.includes(c as string) &&
-                !LOCKED_COLUMNS.has(c as string)
-            )
-          : []),
-      ];
+      // Pins are the user's, locked columns included; only unknown labels
+      // are dropped.
+      const storedPins: string[] = pn
+        ? JSON.parse(pn).filter((c: unknown) => columns.includes(c as string))
+        : DEFAULT_PINNED;
       setPinned(storedPins);
       const od = sessionStorage.getItem("inbox.order.v4");
       // Reconciled against the current column list rather than trusted: a
@@ -1016,9 +1004,6 @@ export default function Workspace() {
    * where it is — which is the first unpinned slot, where the user last saw it.
    */
   const togglePin = (column: string) => {
-    // The two locked columns have no toggle in the list; this is the guard for
-    // every other way in — a stored session, a keyboard path, a later caller.
-    if (LOCKED_COLUMNS.has(column)) return;
     if (pinned.includes(column)) {
       setPinned((p) => p.filter((c) => c !== column));
       return;
@@ -1217,6 +1202,25 @@ export default function Workspace() {
   const colWidths = sizeColumns(shown, avail, widths);
   const colWidth = (c: string) => colWidths[c] ?? DEFAULT_WIDTHS[c];
   // Both fixed bookends count: the checkbox at one end, the kebab at the other.
+  /**
+   * Where each pinned column sticks. Pinned columns lead `shown`, so each one
+   * sticks just right of the checkbox column and the pinned columns before it,
+   * and they hold still while the rest of the table scrolls under them.
+   */
+  const stickyLeft: Record<string, number> = {};
+  shown
+    .filter((c) => pinned.includes(c))
+    .reduce((left, c) => {
+      stickyLeft[c] = left;
+      return left + colWidth(c);
+    }, SELECT_WIDTH);
+  /**
+   * A pinned cell paints its own ground, or the columns scrolling under it
+   * show through. The row's hover tint goes on as a background image over
+   * that ground, the same way the Actions cell does it.
+   */
+  const STICKY_CELL =
+    "sticky z-[1] bg-background group-hover:[background-image:linear-gradient(hsl(var(--muted)/0.3),hsl(var(--muted)/0.3))]";
   const tableWidth =
     SELECT_WIDTH +
     ACTIONS_WIDTH +
@@ -3416,17 +3420,32 @@ export default function Workspace() {
                                         <GripVertical className="h-4 w-4" />
                                       </button>
                                     )}
-                                    <Checkbox
-                                      id={`col-${c}`}
-                                      checked={checked}
-                                      disabled={
-                                        fixed ||
-                                        (checked && visible.length === 1)
-                                      }
-                                      onCheckedChange={(next) =>
-                                        toggleColumn(c, !!next)
-                                      }
-                                    />
+                                    {fixed ? (
+                                      // A locked column is always shown, so
+                                      // there is no choice to offer: a padlock
+                                      // in the checkbox's place, not a checkbox
+                                      // that is ticked and cannot be unticked.
+                                      <span
+                                        className="flex h-4 w-4 flex-none items-center justify-center text-secondary-foreground"
+                                        title={`${c} is always shown`}
+                                      >
+                                        <Lock className="h-4 w-4" aria-hidden />
+                                        <span className="sr-only">
+                                          {c} is locked
+                                        </span>
+                                      </span>
+                                    ) : (
+                                      <Checkbox
+                                        id={`col-${c}`}
+                                        checked={checked}
+                                        disabled={
+                                          checked && visible.length === 1
+                                        }
+                                        onCheckedChange={(next) =>
+                                          toggleColumn(c, !!next)
+                                        }
+                                      />
+                                    )}
                                     <Label
                                       htmlFor={`col-${c}`}
                                       className={cn(
@@ -3441,21 +3460,7 @@ export default function Workspace() {
                                     >
                                       {c}
                                     </Label>
-                                    {fixed ? (
-                                      // A padlock, not a disabled pin: the
-                                      // control is not temporarily unavailable,
-                                      // it is not a choice. Same slot, so the
-                                      // rows still line up.
-                                      <span
-                                        className="flex-none p-0.5 text-secondary-foreground"
-                                        title={`${c} is always shown and always first`}
-                                      >
-                                        <Lock className="h-4 w-4" aria-hidden />
-                                        <span className="sr-only">
-                                          {c} is locked
-                                        </span>
-                                      </span>
-                                    ) : (
+                                    {
                                       <button
                                         type="button"
                                         onClick={() => togglePin(c)}
@@ -3481,7 +3486,7 @@ export default function Workspace() {
                                           <Pin className="h-4 w-4" />
                                         )}
                                       </button>
-                                    )}
+                                    }
                                   </div>
                                 );
                               })
@@ -3571,7 +3576,9 @@ export default function Workspace() {
                           <TableHead
                             role="columnheader"
                             style={{ width: SELECT_WIDTH }}
-                            className="h-10 px-3 py-0 align-middle"
+                            // Pinned to the left edge, as Actions is to the
+                            // right.
+                            className="sticky left-0 z-10 h-10 bg-[#fbfbfe] px-3 py-0 align-middle"
                           >
                             {/* This page, and only this page. Reaching across
                               pages is what the bar's "Select all" button is
@@ -3609,7 +3616,10 @@ export default function Workspace() {
                                       ? "ascending"
                                       : "descending"
                               }
-                              style={{ width: colWidth(c) }}
+                              style={{
+                                width: colWidth(c),
+                                left: stickyLeft[c],
+                              }}
                               // Row -1 is the header in the grid's coordinate
                               // space, so arrowing up out of the first value
                               // lands on the column that names it.
@@ -3626,6 +3636,7 @@ export default function Workspace() {
                               // Dividers come from the rules on <Table>.
                               className={cn(
                                 "relative h-10 whitespace-nowrap py-0 pl-3 pr-2 align-middle",
+                                c in stickyLeft && "sticky z-10 bg-[#fbfbfe]",
                                 T.head,
                                 grid.isCursor(-1, shown.indexOf(c)) &&
                                   "ring-2 ring-inset ring-primary"
@@ -3805,7 +3816,10 @@ export default function Workspace() {
                             <TableCell
                               role="gridcell"
                               onClick={(e) => e.stopPropagation()}
-                              className="h-[50px] px-3 py-0 align-middle"
+                              className={cn(
+                                "left-0 h-[50px] px-3 py-0 align-middle",
+                                STICKY_CELL
+                              )}
                             >
                               <Checkbox
                                 aria-label={`Select ${x.file.name}`}
@@ -3840,11 +3854,13 @@ export default function Workspace() {
                                 )}
                                 data-grid-row={rowIndex}
                                 data-grid-col={colIndex}
+                                style={{ left: stickyLeft[c] }}
                                 // Figma 603:1640 / 603:1658: both variants are 50px.
                                 // The fixed inner box caps intrinsic table height;
                                 // a height on <td> alone is only a minimum.
                                 className={cn(
                                   "h-[50px] overflow-hidden px-3 py-0 align-middle",
+                                  c in stickyLeft && STICKY_CELL,
                                   T.cell,
                                   // Range first, cursor second: the cursor sits
                                   // inside its own selection and has to win.
