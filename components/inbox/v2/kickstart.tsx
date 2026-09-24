@@ -480,7 +480,11 @@ export function InboxWelcomeDialog({
 }: Props & { open: boolean; onClose: () => void }) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[calc(100vh-32px)] w-[calc(100vw-48px)] max-w-[1180px] gap-0 overflow-y-auto overscroll-contain rounded-xl border-neutral-gray p-0">
+      <DialogContent 
+        // Keep focus on the dialog itself. Radix would focus the first step
+        // button, and on a first visit, with no click yet, Chrome rings it.
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        className="max-h-[calc(100vh-32px)] w-[calc(100vw-48px)] max-w-[1180px] gap-0 overflow-y-auto overscroll-contain rounded-xl border-neutral-gray p-0 outline-none">
         <DialogTitle className="sr-only">Welcome to Inbox</DialogTitle>
         <DialogDescription className="sr-only">
           How documents reach the Inbox, and the ways to send them in.
