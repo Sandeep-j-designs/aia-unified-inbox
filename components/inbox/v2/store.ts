@@ -849,6 +849,49 @@ export function journalLineErrors(form: Form): JournalLineError[] {
     return [];
   });
 }
+/**
+ * The required fields a document is missing, by the names the review form
+ * gives them. `issue` answers "can this be approved"; this answers "what is
+ * stopping it", for places that cannot point at a red field, like the toast a
+ * bulk approve leaves behind. Mirrors `issue`'s required set per route.
+ */
+export function missingFields(item: Item): string[] {
+  const f = item.form;
+  const party = item.route === "AR" ? "Customer" : "Vendor";
+  const required: [string, string | undefined][] =
+    item.route === "JV"
+      ? [
+          ["GST registration", f.gst],
+          ["Voucher type", f.voucherType],
+          ["Voucher number", f.voucherNo],
+          ["Date", f.date],
+        ]
+      : item.route === "AR"
+        ? [
+            ["GST registration", f.gst],
+            ["Voucher type", f.voucherType],
+            ["Voucher number", f.voucherNo],
+            ["Invoice number", f.invoiceNo],
+            ["Invoice date", f.date],
+            [party, f.party],
+          ]
+        : [
+            [party, f.party],
+            ["Invoice number", f.invoiceNo],
+            ["Invoice date", f.date],
+            ["Due date", f.due],
+            ["GST registration", f.gst],
+            ["Voucher number", f.voucherNo],
+          ];
+  const missing = required
+    .filter(([, value]) => !String(value || "").trim())
+    .map(([name]) => name);
+  if (item.form.lines.some((line) => !line.ledger)) missing.push("Ledger");
+  if (item.route !== "JV" && !item.form.lines.length)
+    missing.push("Line items");
+  return missing;
+}
+
 export function issue(item: Item) {
   if (!state.permissions.includes(item.route))
     return "You don’t have posting access to this module. Ask an admin.";

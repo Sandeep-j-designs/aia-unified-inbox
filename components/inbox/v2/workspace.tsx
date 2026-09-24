@@ -153,6 +153,7 @@ import {
   applyBulkAction,
   BULK_VOUCHER_TYPES,
   senderUser,
+  missingFields,
   VOUCHER_GROUPS,
   type BulkField,
   type BulkResult,
@@ -715,6 +716,36 @@ export default function Workspace() {
     [pinned, setPinned] = useState(DEFAULT_PINNED),
     [widths, setWidths] = useState<Record<string, number>>({});
   const [resizing, setResizing] = useState<string | null>(null);
+  /**
+   * The selection bar floats over the bottom of the table, exactly where
+   * toasts appear, and a bulk approve's toast is the one most likely to arrive
+   * while the bar is up — over the very buttons it tells the user to use.
+   * The bar publishes how far its top edge sits above the viewport bottom,
+   * and globals.css lifts the toaster clear of it.
+   */
+  const selectionBar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = selectionBar.current;
+    const root = document.documentElement;
+    if (!el || typeof ResizeObserver === "undefined") {
+      root.style.removeProperty("--inbox-bar-lift");
+      return;
+    }
+    const publish = () =>
+      root.style.setProperty(
+        "--inbox-bar-lift",
+        `${Math.round(window.innerHeight - el.getBoundingClientRect().top)}px`
+      );
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    window.addEventListener("resize", publish);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", publish);
+      root.style.removeProperty("--inbox-bar-lift");
+    };
+  }, [selected.length > 0]);
   /**
    * Bulk edits waiting for Approve. Picking a value on the bar only stages it;
    * nothing on the rows changes until Approve applies the staged values and
@@ -1774,24 +1805,74 @@ export default function Workspace() {
    */
   const bulkApprove = () => {
     const edits = BULK_APPLY_ORDER.filter((field) => bulkStaged[field]);
-    const refused: BulkResult = { changed: 0, skipped: 0, reasons: {} };
-    const ready = selected.filter((id) => {
+    /** Why each row that did not get approved did not, by document id. */
+    const held = new Map<string, string>();
+    for (const id of selected) {
+      let refused = "";
       for (const field of edits) {
         const result = applyBulkAction([id], field, bulkStaged[field]!);
-        if (!result.skipped) continue;
-        refused.skipped++;
-        for (const [reason, count] of Object.entries(result.reasons))
-          refused.reasons[reason] = (refused.reasons[reason] || 0) + count;
-        return false;
+        if (result.skipped) {
+          refused = Object.keys(result.reasons)[0] || "Edit refused";
+          break;
+        }
       }
-      return true;
-    });
-    const approved = applyBulkAction(ready, "Approve");
-    for (const [reason, count] of Object.entries(refused.reasons))
-      approved.reasons[reason] = (approved.reasons[reason] || 0) + count;
-    approved.skipped += refused.skipped;
+      if (!refused) {
+        const result = applyBulkAction([id], "Approve");
+        if (!result.skipped) continue;
+        // Say what is missing rather than "Fill the fields marked in red":
+        // there are no red fields on a table row. Read from the store, not
+        // this render's snapshot, so the staged edits just applied count.
+        const current = getState().items.find((x) => x.id === id);
+        const missing = current ? missingFields(current) : [];
+        const reason = Object.keys(result.reasons)[0];
+        refused = missing.length
+          ? `missing ${missing.join(", ")}`
+          : reason === "Hard-block duplicate"
+            ? "match a voucher already posted"
+            : // The detail view's sentence, made to follow a count.
+              (reason || "Not approved")
+                .replace(/\.$/, "")
+                .replace(/^./, (c) => c.toLowerCase());
+      }
+      held.set(id, refused);
+    }
     setBulkStaged({});
-    reportBulk("Approved", approved);
+    const approvedCount = selected.length - held.size;
+    if (!held.size) {
+      notify(
+        `Approved ${approvedCount} document${approvedCount === 1 ? "" : "s"}.`
+      );
+      setSelected([]);
+      return;
+    }
+    /*
+      Partial approval. The complete documents are approved; the rest stay
+      selected, so the bar is already pointed at exactly the documents that
+      need fixing: stage the missing value, Apply & approve again. The toast
+      says what each one lacks, grouped, and Review opens the first.
+    */
+    const heldIds = [...held.keys()];
+    setSelected(heldIds);
+    const counts = new Map<string, number>();
+    for (const reason of held.values())
+      counts.set(reason, (counts.get(reason) || 0) + 1);
+    const breakdown = [...counts]
+      .sort((a, b) => b[1] - a[1])
+      .map(([reason, count]) => `${count} ${reason}`)
+      .join(" · ");
+    const first = getState().items.find((x) => x.id === heldIds[0]);
+    toast[approvedCount ? "warning" : "error"](
+      approvedCount
+        ? `Approved ${approvedCount} of ${selected.length}. ${held.size} still selected.`
+        : `None of the ${selected.length} could be approved.`,
+      {
+        description: breakdown,
+        duration: 12000,
+        action: first
+          ? { label: "Review", onClick: () => open(first) }
+          : undefined,
+      }
+    );
   };
   /*
     Every delete asks first, and asks in one place.
@@ -4193,6 +4274,7 @@ export default function Workspace() {
                 {selected.length > 0 && (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
                     <div
+                      ref={selectionBar}
                       role="toolbar"
                       aria-label="Selected document actions"
                       // One line, always. Staged values make the field buttons

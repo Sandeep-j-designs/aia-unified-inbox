@@ -36,7 +36,7 @@ export default function App({ Component, pageProps }: AppProps) {
       <GuideProvider>
         <Component {...pageProps} />
       </GuideProvider>
-      <Toaster position="bottom-center" closeButton />
+      <Toaster position="bottom-right" closeButton />
     </div>
   );
 }
