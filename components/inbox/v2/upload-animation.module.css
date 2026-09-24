@@ -224,3 +224,15 @@
     transition: none !important;
   }
 }
+
+/* Short screens: the drawing gives up height so the panel under it — the
+   list of failures and its Retry buttons — stays on screen without the
+   dialog scrolling. Zoom rather than transform, so the layout shrinks too. */
+@media (max-height: 640px) {
+  .scene {
+    zoom: 0.7;
+  }
+  .root {
+    padding-bottom: 16px;
+  }
+}

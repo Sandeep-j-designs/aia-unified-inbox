@@ -498,3 +498,21 @@ html {
   ) {
   background-color: hsl(var(--background));
 }
+
+/* ── PROPOSED TOKENS ────────────────────────────────────────────────────────
+   Values this prototype needs that production does not have yet. Each one is
+   a design-system change that has to land in production before the screen
+   ships; they are declared here, after the verbatim production copy, so the
+   prototype runs on them without editing that copy.
+
+   --destructive-foreground → #B10000 (was --palette-red-600, #C11212).
+   Error text across the prototype: field errors, failed uploads, failed
+   syncs. Set by product, 2026-09-24. 7.8:1 on white, so it passes AA for
+   body text, where production's #FD1717 (~3.9:1) does not. Light theme only;
+   dark mode keeps its own value. Destructive BUTTONS are untouched — they
+   use --palette-red-500 directly (components/ui/button.tsx). */
+/* Unlayered, so it outranks the @layer base copy above; `:not(.dark)` keeps
+   it off the dark theme, which an unlayered rule would otherwise also win. */
+:root:not(.dark) {
+  --destructive-foreground: 0 100% 34.7%;
+}

@@ -1,6 +1,14 @@
+/*
+  The drop zone is the one part of the panel that can give up height, so it is
+  what absorbs a short screen: full size down to a 720px-tall viewport, then it
+  shrinks with the viewport so the rest — tips open included — still fits
+  inside the dialog's 90vh without a scrollbar. 330px is everything else in the
+  panel with the tips open; the floor is where the compact artwork below stops
+  fitting.
+*/
 .dropZone {
   display: flex;
-  min-height: 238px;
+  min-height: clamp(150px, calc(90vh - 330px), 238px);
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -144,6 +152,31 @@
 .guidelinesTitle svg {
   color: #8999bc;
 }
+/* The title is the disclosure's summary: the whole row toggles it. */
+summary.guidelinesTitle {
+  cursor: pointer;
+  list-style: none;
+  border-radius: 6px;
+}
+summary.guidelinesTitle::-webkit-details-marker {
+  display: none;
+}
+summary.guidelinesTitle:focus-visible {
+  outline: 2px solid var(--palette-blue-400);
+  outline-offset: 4px;
+}
+.guidelinesChevron {
+  margin-left: auto;
+  transition: transform 150ms ease;
+}
+details[open] > summary .guidelinesChevron {
+  transform: rotate(180deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .guidelinesChevron {
+    transition: none;
+  }
+}
 .tips {
   column-count: 2;
   column-gap: 20px;
@@ -240,6 +273,28 @@
   }
   .dropZone {
     padding-inline: 16px;
+  }
+}
+/* Short screens (a 1366×768 or 1280×720 laptop at 125% scaling): the artwork
+   and spacing tighten so the drop zone can shrink without clipping its text. */
+@media (max-height: 640px) {
+  .dropZone {
+    padding-block: 14px;
+  }
+  .artwork {
+    transform: scale(0.7);
+    transform-origin: 50% 0;
+    margin-bottom: -11px;
+  }
+  .formats {
+    margin-top: 12px;
+  }
+}
+/* Shorter still, the picture goes: the headline and the browse link are what
+   the zone needs to say. */
+@media (max-height: 540px) {
+  .artwork {
+    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {

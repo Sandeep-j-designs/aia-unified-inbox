@@ -13,8 +13,34 @@ import {
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import s from "./kickstart.module.css";
+
+/**
+ * What is already in the Inbox when the welcome opens.
+ *
+ * Present only when documents arrived before the user's first visit — someone
+ * registered with the WhatsApp bot before Inbox launched. The welcome then
+ * stops asking them to send something in and points at what is waiting.
+ */
+export type Arrivals = {
+  /** Documents in the queue, whatever their state. */
+  total: number;
+  /** Ready for review now. */
+  ready: number;
+  /** Still being read. */
+  reading: number;
+  /** How many of them came in on WhatsApp. */
+  whatsapp: number;
+  /** The phone number registered with the WhatsApp bot. */
+  whatsappNumber?: string;
+};
 
 type Props = {
   companyName: string;
@@ -23,6 +49,13 @@ type Props = {
   onUpload: (files?: FileList) => void;
   onWhatsApp: () => void;
   onCopy: () => Promise<boolean>;
+  arrivals?: Arrivals;
+  /** Close the welcome on the Needs review queue. Arrivals only. */
+  onReview?: () => void;
+  onTour?: () => void;
+  onSkip?: () => void;
+  /** Laid out for the welcome dialog rather than as a page band. */
+  inDialog?: boolean;
 };
 const steps = [
   { label: "Classify", icon: Inbox },
@@ -98,7 +131,14 @@ export default function InboxKickstart({
   onUpload,
   onWhatsApp,
   onCopy,
+  arrivals,
+  onReview,
+  onTour,
+  onSkip,
+  inDialog,
 }: Props) {
+  const waiting = !!arrivals?.total;
+  const connected = !!arrivals?.whatsapp;
   const [copied, setCopied] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [step, setStep] = useState(0);
@@ -120,7 +160,10 @@ export default function InboxKickstart({
     setStep(index);
   };
   return (
-    <section aria-labelledby="inbox-kickstart-title" className={s.root}>
+    <section
+      aria-labelledby="inbox-kickstart-title"
+      className={cn(s.root, inDialog && s.inDialog)}
+    >
       <div className={s.split}>
         <div className={s.pitch}>
           <div className={s.intro}>
@@ -131,9 +174,10 @@ export default function InboxKickstart({
               All your documents. <span>One inbox.</span>
             </h2>
             <p>
-              Send a bill, invoice, or journal. AI Accountant reads it, prepares
-              the details, and suggests where it belongs. You review before
-              anything is posted.
+              Send Bills, Invoices &amp; Expenses. AI Accountant reads it,
+              prepares the details, and suggests whether it belongs in
+              purchases, sales or journals. You review before anything is
+              posted.
             </p>
           </div>
 
@@ -256,7 +300,11 @@ export default function InboxKickstart({
 
         <div className={s.intake}>
           <div className={s.intakeHeading}>
-            <h3>Let’s get your inbox started</h3>
+            <h3>
+              {waiting
+                ? `${arrivals.total} ${arrivals.total === 1 ? "document is" : "documents are"} already waiting`
+                : "Let’s get your inbox started"}
+            </h3>
             <span>
               Receiving for <strong>{companyName}</strong>
             </span>
@@ -294,7 +342,7 @@ export default function InboxKickstart({
               <div className={s.channelAction}>
                 <Button
                   data-guide-id="inbox-upload"
-                  className={s.uploadButton}
+                  className={cn(s.uploadButton, waiting && s.uploadQuiet)}
                   onClick={() => onUpload()}
                 >
                   <Upload size={16} aria-hidden /> Upload files{" "}
@@ -348,22 +396,97 @@ export default function InboxKickstart({
                 <MessageCircle size={23} aria-hidden />
               </span>
               <div className={s.channelText}>
-                <h4>Send on WhatsApp</h4>
+                <h4>{connected ? "WhatsApp connected" : "Send on WhatsApp"}</h4>
+                {connected && arrivals.whatsappNumber && (
+                  <p className={s.registeredNumber}>
+                    Registered number{" "}
+                    <strong>{arrivals.whatsappNumber}</strong>
+                  </p>
+                )}
               </div>
               <div className={s.channelAction}>
-                <Button
-                  data-guide-id="inbox-whatsapp"
-                  variant="ghost"
-                  className={s.whatsappButton}
-                  onClick={onWhatsApp}
-                >
-                  Set up WhatsApp <ArrowRight size={16} aria-hidden />
-                </Button>
+                {connected ? (
+                  /* Already set up, so there is nothing to do here — the card
+                     reports what the channel has delivered instead. */
+                  <span className={s.connected} data-guide-id="inbox-whatsapp">
+                    <Check size={14} aria-hidden />
+                    {arrivals.whatsapp} received
+                  </span>
+                ) : (
+                  <Button
+                    data-guide-id="inbox-whatsapp"
+                    variant="ghost"
+                    className={s.whatsappButton}
+                    onClick={onWhatsApp}
+                  >
+                    Set up WhatsApp <ArrowRight size={16} aria-hidden />
+                  </Button>
+                )}
               </div>
             </article>
           </div>
+          {(onTour || onReview || onSkip) && (
+            <div className={s.footer}>
+              {onTour && (
+                <Button variant="link" className={s.tourLink} onClick={onTour}>
+                  Take the tour
+                </Button>
+              )}
+              <div className={s.footerEnd}>
+                {waiting && !!arrivals.reading && (
+                  <span className={s.readingNote} role="status">
+                    {arrivals.reading} still being read
+                  </span>
+                )}
+                {waiting && onReview ? (
+                  <Button className={s.reviewButton} onClick={onReview}>
+                    {arrivals.ready
+                      ? `Review ${arrivals.ready} ${arrivals.ready === 1 ? "document" : "documents"}`
+                      : "Go to Inbox"}
+                    <ArrowRight size={16} aria-hidden />
+                  </Button>
+                ) : (
+                  onSkip && (
+                    <Button variant="ghost" onClick={onSkip}>
+                      Skip for now
+                    </Button>
+                  )
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * The welcome, as a dialog over the Inbox on a company's first visit.
+ *
+ * It used to be the page: an Inbox with nothing sent in yet showed this in
+ * place of the table. That broke for anyone who registered with the WhatsApp
+ * bot before Inbox launched — their documents were already there, hidden
+ * behind a screen asking them to send some. As a dialog the queue is always
+ * the page, full or empty, and the welcome sits over it once.
+ *
+ * Every way out counts as seen: the close button, Escape, a click outside,
+ * and each action inside. Reopened from "How Inbox works" in the page menu.
+ */
+export function InboxWelcomeDialog({
+  open,
+  onClose,
+  ...props
+}: Props & { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="max-h-[calc(100vh-32px)] w-[calc(100vw-48px)] max-w-[1180px] gap-0 overflow-y-auto overscroll-contain rounded-xl border-neutral-gray p-0">
+        <DialogTitle className="sr-only">Welcome to Inbox</DialogTitle>
+        <DialogDescription className="sr-only">
+          How documents reach the Inbox, and the ways to send them in.
+        </DialogDescription>
+        <InboxKickstart {...props} inDialog />
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -107,7 +107,7 @@ const SyncStatus = ({ state }: { state: RegisterSyncState }) => {
       className={cn(
         "inline-flex items-center gap-1.5 whitespace-nowrap text-sm",
         state === "failed"
-          ? "text-status-error"
+          ? "text-destructive-foreground"
           : state === "pending"
             ? "text-secondary-foreground"
             : "text-primary"

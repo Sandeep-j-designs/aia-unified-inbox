@@ -38,6 +38,7 @@ import {
   Search,
   Sparkles,
   Keyboard,
+  Info,
   Lightbulb,
   Slash,
   Undo2,
@@ -116,7 +117,7 @@ import { ColumnFilter, FilterPanel } from "./filter-panel";
 import type { FilterOption } from "./filter-panel";
 import Preview from "./preview";
 import EditableCell from "./editable-cell";
-import InboxKickstart from "./kickstart";
+import { InboxWelcomeDialog } from "./kickstart";
 import {
   ACTIONS_WIDTH,
   COLUMN_SIZES,
@@ -178,6 +179,9 @@ import {
   useStore,
   withinNewWindow,
   NEW_TAG_DAYS,
+  applyScenario,
+  REGISTERED_WHATSAPP,
+  type Scenario,
 } from "./store";
 import { useTallySync } from "@/hooks/pages/inbox/use-tally-sync";
 import SyncConfirmModal from "./sync/sync-confirm-modal";
@@ -472,9 +476,58 @@ const PAGE_SIZES = [10, 25, 50, 100];
 /** The cap the drop zone states. Files themselves are never sent anywhere. */
 const MAX_UPLOAD_MB = 500;
 
-/** Why a simulated upload failed, said once and shown against each file. */
-const UPLOAD_FAILURE_REASON =
-  "The connection dropped before the file finished.";
+/**
+ * The ways an upload fails, each said the way an accountant would need it:
+ * what happened, then what fixes it. `retry` is whether sending the same file
+ * again can work — it decides which group a failed row lands in, and whether
+ * it gets Retry or Choose file.
+ *
+ * `short` is the word the panel's summary line counts it by ("2 interrupted ·
+ * 1 password-protected").
+ */
+const UPLOAD_FAILURES = {
+  interrupted: {
+    title: "Upload interrupted",
+    detail: "Your internet connection dropped partway through.",
+    short: "interrupted",
+    retry: true,
+  },
+  password: {
+    title: "Password-protected PDF",
+    detail: "Remove the password, then upload it again.",
+    short: "password-protected",
+    retry: false,
+  },
+  damaged: {
+    title: "File is damaged",
+    detail: "It can’t be opened. Export or scan it again.",
+    short: "damaged",
+    retry: false,
+  },
+} as const;
+type UploadFailureKind = keyof typeof UPLOAD_FAILURES;
+const failureText = (kind: UploadFailureKind) =>
+  `${UPLOAD_FAILURES[kind].title}. ${UPLOAD_FAILURES[kind].detail}`;
+/**
+ * Read a failure back from its message. The three simulated kinds are
+ * recognised by their title; anything else — a real `ingest` rejection such as
+ * an unsupported format or a bank statement — is its own reason, retryable
+ * only when the save itself did not complete.
+ */
+const classifyFailure = (reason: string) => {
+  const kind = (Object.keys(UPLOAD_FAILURES) as UploadFailureKind[]).find(
+    (key) => reason.startsWith(UPLOAD_FAILURES[key].title)
+  );
+  if (kind) return { key: kind as string, ...UPLOAD_FAILURES[kind] };
+  const retry = reason.startsWith("could not save");
+  return {
+    key: reason,
+    title: retry ? "Couldn’t save the file" : reason,
+    detail: retry ? "Something went wrong on our side." : "",
+    short: retry ? "not saved" : "can’t be used",
+    retry,
+  };
+};
 
 /**
  * What to know before choosing a file, from the bulk upload frame.
@@ -619,20 +672,15 @@ export default function Workspace() {
     );
   }, [state.company, state.startedCompanies]);
   /*
-    The launch guide is the Inbox journey now — the same seven steps the Guide
-    button offers, rather than a second four-card dialog that said the same
-    thing in a different shape. It runs once, on the first queue that has
-    anything in it: there is nothing to narrate over an empty table, and the
-    kickstart screen is already a guided page of its own.
+    The launch guide no longer starts itself.
+
+    It used to run on the first queue with anything in it. With the welcome a
+    dialog, that queue is now there on first load for anyone whose WhatsApp
+    documents arrived before launch — so the tour would have opened on top of,
+    or straight after, the welcome: two introductions back to back. The welcome
+    offers it instead ("Take the tour"), and the Guide button still has it.
   */
   const guide = useGuide();
-  const autoGuided = useRef(false);
-  useEffect(() => {
-    if (state.tourDone || kickstartPreview || autoGuided.current) return;
-    autoGuided.current = true;
-    configure({ tourDone: true });
-    guide.startJourney("inbox");
-  }, [state.tourDone, kickstartPreview]);
   const [ready, setReady] = useState(false),
     [dialog, setDialog] = useState(""),
     /**
@@ -1210,9 +1258,52 @@ export default function Workspace() {
   // The duplicate's match target is a voucher from before the Inbox, not a
   // document in it — see `priorVoucher`. It stays openable by id; it just never
   // counts as one of the queue's rows.
-  const all = state.items.filter(
-    (x) => x.company === state.company && !x.priorVoucher
-  );
+  //
+  // A company nothing has been sent to yet shows an empty queue. The seeded
+  // documents behind it are the demo batch the first upload brings in, not
+  // arrivals — see `upload`.
+  const all = kickstartPreview
+    ? []
+    : state.items.filter((x) => x.company === state.company && !x.priorVoucher);
+  /*
+    The welcome dialog: once per company, on its first visit to the Inbox.
+
+    It opens over the queue whatever is in it — an empty Inbox, or one that
+    WhatsApp has been filling since before launch — and what it says adapts to
+    which (see `arrivals`). Not over a register or a document: those are
+    reached from the Inbox, and a first visit that lands on one directly is
+    welcomed when it comes back to the queue.
+  */
+  const welcomed = !!state.welcomed?.includes(state.company);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  useEffect(() => {
+    if (ready && !welcomed && !moduleRoute && !id) setWelcomeOpen(true);
+  }, [ready, welcomed, moduleRoute, id, state.company]);
+  const closeWelcome = () => {
+    setWelcomeOpen(false);
+    const seen = getState().welcomed || [];
+    if (!seen.includes(state.company))
+      configure({ welcomed: [...seen, state.company] });
+  };
+  /** Close the welcome, then do the thing — never a dialog over a dialog. */
+  const afterWelcome = (next: () => void) => {
+    closeWelcome();
+    window.setTimeout(next, DIALOG_EXIT_MS);
+  };
+  const arrivals = useMemo(() => {
+    const queue = all.filter(
+      (x) => !["Approved", "Deleted"].includes(x.status)
+    );
+    return {
+      total: queue.length,
+      ready: queue.filter((x) => x.status === "Needs Review").length,
+      reading: queue.filter((x) =>
+        ["Received", "Extracting"].includes(x.status)
+      ).length,
+      whatsapp: queue.filter((x) => x.source === "whatsapp").length,
+      whatsappNumber: REGISTERED_WHATSAPP,
+    };
+  }, [all]);
   /**
    * Tally sync. Scoped to the route when the workspace is showing one module's
    * posted vouchers — that view is the Figma's "Accounts Payable - All Bills"
@@ -1725,6 +1816,58 @@ export default function Workspace() {
     }
     void upload(list.slice(0, 1), intakeSource);
   };
+  /**
+   * What a retry needs from the run it is retrying: where the batch was going,
+   * and the demo documents that did not make it, by their row in the panel.
+   * A file the user chose is its own `File` in `files`; a demo sample is not a
+   * file at all, so the item it stands for is kept here until it lands.
+   */
+  const retryRun = useRef<{
+    company: string;
+    source: Item["source"];
+    samples: Map<number, Item>;
+  }>({ company: "", source: "upload", samples: new Map() });
+  /**
+   * Rows being sent again. While there are any, the panel keeps the list of
+   * failures on screen — each row showing its own attempt — instead of
+   * swapping to the full run list, where the row being retried would be one
+   * of thirty-six and scrolled out of view.
+   */
+  const [retrying, setRetrying] = useState<number[]>([]);
+  /**
+   * Which group each failed row sits in: `retry` (the same file can go again)
+   * or `replace` (it needs a new file). Fixed when the row fails, so a row
+   * being retried stays where it is instead of jumping groups the moment its
+   * error clears.
+   */
+  const [failGroups, setFailGroups] = useState<
+    Record<number, "retry" | "replace">
+  >({});
+  const markFailed = (index: number, errors: string[]) => {
+    if (!errors.length) return;
+    const reason = errors[0].slice(errors[0].indexOf(": ") + 2).trim();
+    setFailGroups((current) => ({
+      ...current,
+      [index]: classifyFailure(reason).retry ? "retry" : "replace",
+    }));
+  };
+  /**
+   * Which kind of upload the panel was opened for.
+   *
+   * - `bulk` — from the welcome dialog. Always the full demo batch alongside
+   *   the file chosen: the welcome is where the Inbox is being introduced, and
+   *   a batch arriving, being read and landing is the thing it introduces.
+   * - `single` — from Upload Documents above the table. Only the file chosen:
+   *   this is the everyday button, and it does what it says.
+   * - `auto` — anything else (the guide, the intake demos): bulk on a
+   *   company's first upload, single after.
+   *
+   * Set by each entry point, and back to `auto` once a run finishes so an
+   * "Upload more" from the result panel is an ordinary upload.
+   *
+   * DEV: prototype-only. Production uploads the files it is given.
+   */
+  const intakeMode = useRef<"bulk" | "single" | "auto">("auto");
   const upload = async (
     selectedFiles: File[],
     intakeSource: Item["source"],
@@ -1744,10 +1887,16 @@ export default function Workspace() {
     const firstUpload =
       !state.startedCompanies?.includes(targetCompany) &&
       !startedInboxCompanies.has(targetCompany);
+    const mode = intakeMode.current;
+    intakeMode.current = "auto";
+    const bulk = mode === "bulk" || (mode === "auto" && firstUpload);
     const samples = demo
       ? demoUploadDocuments(targetCompany, demo.count)
-      : firstUpload
-        ? demoUploadDocuments(targetCompany, 35)
+      : bulk
+        ? demoUploadDocuments(targetCompany, 35, {
+            source: intakeSource,
+            sender: intakeSource === "upload" ? actor : sender,
+          })
         : [];
     const batch = [
       ...selectedFiles,
@@ -1770,11 +1919,23 @@ export default function Workspace() {
       it to a simulation would be the prototype inventing a problem with their
       document.
     */
-    const failAt = new Set(
+    /*
+      Three of them, two ways: two uploads interrupted (a retry fixes those)
+      and one password-protected PDF (only a new file does). A demo that fails
+      only one way never shows the panel sorting failures by what fixes them.
+    */
+    const failAt = new Map<number, UploadFailureKind>(
       samples.length && !demo
         ? [
-            selectedFiles.length + 3,
-            selectedFiles.length + Math.floor(samples.length * 0.7),
+            [selectedFiles.length + 3, "interrupted"],
+            [
+              selectedFiles.length + Math.floor(samples.length * 0.45),
+              "password",
+            ],
+            [
+              selectedFiles.length + Math.floor(samples.length * 0.7),
+              "interrupted",
+            ],
           ]
         : []
     );
@@ -1785,6 +1946,12 @@ export default function Workspace() {
     const failures: string[] = [];
     const landed: typeof samples = [];
     const dropped: typeof samples = [];
+    retryRun.current = {
+      company: targetCompany,
+      source: intakeSource,
+      samples: new Map(),
+    };
+    setFailGroups({});
     uploadLock.current = true;
     setBusy(true);
     setFiles(batch);
@@ -1816,11 +1983,12 @@ export default function Workspace() {
                 — a 100/145/190 cycle that made the bar stutter forward at three
                 different speeds and read as random rather than as progress.
               */
-              window.setTimeout(resolve, demo ? 600 : firstUpload ? 120 : 800)
+              window.setTimeout(resolve, demo ? 600 : bulk ? 120 : 800)
             ),
           ]);
-          errors = failAt.has(index)
-            ? [`${file.name}: ${UPLOAD_FAILURE_REASON}`]
+          const simulated = failAt.get(index);
+          errors = simulated
+            ? [`${file.name}: ${failureText(simulated)}`]
             : result;
         } catch (error) {
           errors = [`${file.name}: could not save file. ${String(error)}`];
@@ -1834,7 +2002,10 @@ export default function Workspace() {
         */
         const sample = samples[index - selectedFiles.length];
         if (sample) (errors.length ? dropped : landed).push(sample);
+        if (sample && errors.length)
+          retryRun.current.samples.set(index, sample);
         failures.push(...errors);
+        markFailed(index, errors);
         setUploadErrors((current) => [...current, ...errors]);
         setUploadStatus((current) =>
           current.map((status, i) =>
@@ -1920,6 +2091,120 @@ export default function Workspace() {
       setBusy(false);
     }
   };
+  /**
+   * Send the failed documents of the last run again, in place.
+   *
+   * Each row goes back through the same beats as the first attempt — Uploading,
+   * then Uploaded or Failed — so the panel, the count and the drawing all move
+   * the way they did the first time. What lands is published and extracted
+   * like any upload. When nothing is left failing, the panel closes the way a
+   * clean run does; otherwise it stays, listing only what is still missing.
+   *
+   * In the prototype the connection drop is the only failure a retry can fix,
+   * and the second attempt always gets through — see `canRetry`.
+   */
+  const retryUploads = async (
+    indexes: number[],
+    /** Choose file: a corrected copy sent in place of the row's file. */
+    replacement?: { index: number; file: File }
+  ) => {
+    if (uploadLock.current || !indexes.length) return;
+    const { company: target, source: from, samples } = retryRun.current;
+    const wait = (ms: number) =>
+      new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+    const receivedIds: string[] = [];
+    const recovered: Item[] = [];
+    let stillFailing = uploadStatus.filter(
+      (status) => status === "Failed"
+    ).length;
+    uploadLock.current = true;
+    setBusy(true);
+    setRetrying(indexes);
+    try {
+      for (const index of indexes) {
+        const previous = files[index];
+        const file = replacement?.index === index ? replacement.file : previous;
+        if (!file || !previous) continue;
+        if (file !== previous) {
+          // The replacement is the user's own file: it stands in for the
+          // row, and the demo document the row was standing for goes.
+          samples.delete(index);
+          setFiles((current) =>
+            current.map((entry, i) => (i === index ? file : entry))
+          );
+        }
+        setUploadStatus((current) =>
+          current.map((status, i) => (i === index ? "Uploading" : status))
+        );
+        let errors: string[];
+        try {
+          const [result] = await Promise.all([
+            file instanceof File
+              ? ingest(
+                  [file],
+                  from,
+                  from === "upload" ? actor : sender,
+                  target,
+                  { deferExtraction: true, receivedIds }
+                )
+              : Promise.resolve<string[]>([]),
+            wait(800),
+          ]);
+          errors = result;
+        } catch (error) {
+          errors = [`${file.name}: could not save file. ${String(error)}`];
+        }
+        markFailed(index, errors);
+        if (!errors.length && file !== previous)
+          notify(`${file.name} uploaded in place of ${previous.name}.`);
+        if (!errors.length) {
+          stillFailing--;
+          const sample = samples.get(index);
+          if (sample) {
+            recovered.push(sample);
+            samples.delete(index);
+          }
+        }
+        setUploadErrors((current) => [
+          ...current.filter(
+            (entry) =>
+              !entry.startsWith(`${previous.name}:`) &&
+              !entry.startsWith(`${file.name}:`)
+          ),
+          ...errors,
+        ]);
+        setUploadStatus((current) =>
+          current.map((status, i) =>
+            i === index ? (errors.length ? "Failed" : "Uploaded") : status
+          )
+        );
+      }
+      if (recovered.length || receivedIds.length)
+        beginUploadedExtraction(target, recovered, receivedIds);
+      if (stillFailing > 0) return;
+      // Everything is in: the same ending as a clean run.
+      setHandoff(true);
+      await wait(DIALOG_DWELL_MS);
+      setDialog("");
+      window.setTimeout(() => setJustUploaded(true), DIALOG_EXIT_MS * 0.6);
+      window.setTimeout(
+        () => setJustUploaded(false),
+        DIALOG_EXIT_MS + TABLE_ENTER_MS
+      );
+      window.setTimeout(() => {
+        setFiles([]);
+        setUploadStatus([]);
+        setUploadErrors([]);
+        setHandoff(false);
+        setRetrying([]);
+      }, DIALOG_EXIT_MS);
+    } finally {
+      uploadLock.current = false;
+      setBusy(false);
+      // A clean finish keeps its rows up until the panel has gone (above).
+      if (stillFailing > 0) setRetrying([]);
+    }
+  };
   /*
     The guided walkthrough asking the screen to do something.
 
@@ -1937,6 +2222,7 @@ export default function Workspace() {
       const action = (event as CustomEvent<{ action: GuideAction }>).detail
         ?.action;
       if (action === "open-upload") {
+        intakeMode.current = "auto";
         setSource("upload");
         setFiles([]);
         setUploadStatus([]);
@@ -1968,7 +2254,11 @@ export default function Workspace() {
       if (action === "reset-demo") {
         resetCompany(state.company);
         startedInboxCompanies.delete(state.company);
-        setKickstartPreview(true);
+        // Back to how this company started: empty for a new user, the WhatsApp
+        // backlog for one who registered before launch.
+        setKickstartPreview(
+          !getState().startedCompanies?.includes(state.company)
+        );
         setDialog("");
         setFiles([]);
         setUploadStatus([]);
@@ -2012,6 +2302,15 @@ export default function Workspace() {
     return error ? error.slice(error.indexOf(": ") + 2).trim() : "";
   };
   const failedCount = uploadStatus.filter((s) => s === "Failed").length;
+  /**
+   * Whether sending a failed file again could work. A dropped connection or a
+   * save that did not complete can; a wrong format or a bank statement will
+   * fail the same way every time, so those rows get no Retry.
+   */
+  const canRetry = (name: string) => classifyFailure(reasonFor(name)).retry;
+  const retryableIndexes = uploadStatus.flatMap((status, i) =>
+    status === "Failed" && files[i] && canRetry(files[i].name) ? [i] : []
+  );
   const settledCount = uploadedCount + failedCount;
   if (!ready)
     return (
@@ -2583,43 +2882,6 @@ export default function Workspace() {
                 </>
               )}
             </>
-          ) : !moduleRoute && (!all.length || kickstartPreview) ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-auto overscroll-none">
-              {/* No page title on the empty state — the headline is the title. */}
-              <InboxKickstart
-                key={company.id}
-                companyName={company.name}
-                email={`${company.slug}@inbox.aiaccountant.app`}
-                maxFiles={MAX_UPLOAD_FILES}
-                onCopy={async () => {
-                  try {
-                    await navigator.clipboard.writeText(
-                      `${company.slug}@inbox.aiaccountant.app`
-                    );
-                    notify(
-                      "Forwarding address copied. Paste it into your email client."
-                    );
-                    return true;
-                  } catch {
-                    notify(
-                      "Couldn’t copy the address. Select it and copy manually.",
-                      "error"
-                    );
-                    return false;
-                  }
-                }}
-                onWhatsApp={() => setDialog("whatsapp")}
-                onUpload={(incoming) => {
-                  setSource("upload");
-                  setSender(actor);
-                  setUploadErrors([]);
-                  setFiles([]);
-                  setUploadStatus([]);
-                  if (incoming) addFiles(incoming, "upload");
-                  setDialog("upload");
-                }}
-              />
-            </div>
           ) : moduleRoute ? (
             /*
               Purchases, Sales and Journal Vouchers are registers of posted
@@ -2752,7 +3014,19 @@ export default function Workspace() {
                       }
                       primaryText={moduleRoute ? undefined : "Upload Documents"}
                       primaryIcon={Upload}
+                      overflowActions={
+                        moduleRoute
+                          ? undefined
+                          : [
+                              {
+                                label: "How Inbox works",
+                                icon: Info,
+                                onClick: () => setWelcomeOpen(true),
+                              },
+                            ]
+                      }
                       onPrimaryButtonClick={() => {
+                        intakeMode.current = "single";
                         setSource("upload");
                         setSender(actor);
                         setUploadErrors([]);
@@ -2975,7 +3249,7 @@ export default function Workspace() {
                           variant="ghost"
                           // Red per Figma 716:15029, which asks for
                           // status-error-text-700 (#a80f0f). Taking the project's
-                          // --destructive-foreground (#C11212) instead: that token is
+                          // --destructive-foreground (#B10000) instead: that token is
                           // the AA-corrected one, and hardcoding the frame's hex
                           // would put a sixth unmanaged status red in the file.
                           className={cn(
@@ -4138,6 +4412,7 @@ export default function Workspace() {
               variant="outline"
               className="text-primary"
               onClick={() => {
+                intakeMode.current = "auto";
                 setSource("whatsapp");
                 setSender("+91 90000 00001");
                 setFiles([]);
@@ -4152,6 +4427,7 @@ export default function Workspace() {
               variant="outline"
               className="text-primary"
               onClick={() => {
+                intakeMode.current = "auto";
                 setSource("email");
                 setSender("vendor@example.com");
                 setFiles([]);
@@ -4167,6 +4443,9 @@ export default function Workspace() {
       </PageDialog>
       <PageDialog
         open={dialog === "upload"}
+        // Short screens get a tighter inset, so the whole panel — tips open
+        // included — stays on screen without scrolling. See upload-dialog.module.css.
+        className="[@media(max-height:640px)]:p-5"
         /*
           The title carries the state, so the body no longer has to: "Bulk
           upload" plus a count plus a sentence saying the same thing was three
@@ -4177,23 +4456,19 @@ export default function Workspace() {
             ? `Demo ${source} intake`
             : !files.length
               ? "Upload documents"
-              : settledCount < files.length
-                ? `Uploading ${files.length} document${files.length === 1 ? "" : "s"}`
-                : // What landed, counted, whether or not anything was lost.
-                  // "Uploaded 34 of 36" made the reader do the subtraction to
-                  // find the good news; the failures are named directly below,
-                  // so the header is free to say the part that went right.
-                  `${uploadedCount} Upload${uploadedCount === 1 ? "" : "s"} Successful`
+              : retrying.length && busy
+                ? `Retrying ${retrying.length} upload${retrying.length === 1 ? "" : "s"}`
+                : settledCount < files.length
+                  ? `Uploading ${files.length} document${files.length === 1 ? "" : "s"}`
+                  : // What landed, counted, whether or not anything was lost.
+                    // "Uploaded 34 of 36" made the reader do the subtraction to
+                    // find the good news; the failures are named directly below,
+                    // so the header is free to say the part that went right.
+                    `${uploadedCount} Upload${uploadedCount === 1 ? "" : "s"} Successful`
         }
-        // The formats and the cap moved into the drop zone, where they are read
-        // at the moment of choosing rather than above the thing being chosen.
-        // What stays here is the one rule that sends you somewhere else — and
-        // only while you are still choosing, since it cannot act on it after.
-        description={
-          files.length
-            ? undefined
-            : "Bank and credit card statements belong in Banking reconciliation, not the Inbox."
-        }
+        // No description. The formats and the cap are in the drop zone, where
+        // they are read at the moment of choosing; the Banking-statements line
+        // that used to sit here was removed at product's request.
         /*
           Closing is what ends a finished run. The batch is cleared here rather
           than when the run stops, because on a failed run the list of what did
@@ -4299,7 +4574,7 @@ export default function Workspace() {
                   {dragOver ? (
                     "Release to add your documents"
                   ) : (
-                    <>Drag your documents here</>
+                    <>Drop bills, invoices or expenses here</>
                   )}
                 </span>
                 <span className={uploadStyles.browse}>
@@ -4335,14 +4610,18 @@ export default function Workspace() {
                 they are wrong: what it can read, what it reads best, where the
                 limit is and how long it takes.
               */}
-              <section
-                aria-label="Upload guidelines"
-                className={uploadStyles.guidelines}
-              >
-                <h3 className={uploadStyles.guidelinesTitle}>
-                  <Lightbulb className="h-4 w-4" aria-hidden />A few tips for a
-                  smooth upload
-                </h3>
+              {/* Collapsed by default: the tips are there for whoever wants
+                  them, and the drop zone stays the one thing the panel is
+                  about. A native disclosure, so Enter and Space work on it. */}
+              <details className={uploadStyles.guidelines}>
+                <summary className={uploadStyles.guidelinesTitle}>
+                  <Lightbulb className="h-4 w-4" aria-hidden />
+                  Tips for smooth upload
+                  <ChevronDown
+                    className={cn("h-4 w-4", uploadStyles.guidelinesChevron)}
+                    aria-hidden
+                  />
+                </summary>
                 <ul className={uploadStyles.tips}>
                   {UPLOAD_GUIDELINES.map((line) => (
                     <li key={line} className={uploadStyles.tip}>
@@ -4351,7 +4630,7 @@ export default function Workspace() {
                     </li>
                   ))}
                 </ul>
-              </section>
+              </details>
               {/*
                 The other two channels, named where the choice is being made.
 
@@ -4361,12 +4640,12 @@ export default function Workspace() {
                 the two channels that do not need this dialog at all were
                 never mentioned again.
 
-                Only once there is something in the Inbox: opened from the
-                kickstart, both channels are already on the screen behind this
-                panel, and saying it twice is noise. Only for an upload, too —
-                the demo Email and WhatsApp intakes are already that channel.
+                Always, now that the welcome is a dialog: it has closed by the
+                time this opens, so nothing behind this panel names the other
+                channels any more. Only for an upload — the demo Email and
+                WhatsApp intakes are already that channel.
               */}
-              {source === "upload" && !kickstartPreview && (
+              {source === "upload" && (
                 <section
                   aria-label="Other ways to send documents"
                   className={uploadStyles.channels}
@@ -4400,18 +4679,28 @@ export default function Workspace() {
                     aria-hidden="true"
                     className={uploadStyles.channelDivider}
                   />
-                  <span className={uploadStyles.channel}>
-                    <MessageCircle aria-hidden />
-                    WhatsApp
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 shrink-0 px-1.5 text-xs text-primary"
-                      onClick={() => setDialog("whatsapp")}
-                    >
-                      Set up
-                    </Button>
-                  </span>
+                  {/* Registered already: name the number that is connected,
+                      rather than offering to set up what is set up. */}
+                  {state.scenario === "whatsapp" ? (
+                    <span className={uploadStyles.channel}>
+                      <MessageCircle aria-hidden />
+                      WhatsApp
+                      <code>{REGISTERED_WHATSAPP}</code>
+                    </span>
+                  ) : (
+                    <span className={uploadStyles.channel}>
+                      <MessageCircle aria-hidden />
+                      WhatsApp
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 shrink-0 px-1.5 text-xs text-primary"
+                        onClick={() => setDialog("whatsapp")}
+                      >
+                        Set up
+                      </Button>
+                    </span>
+                  )}
                 </section>
               )}
             </>
@@ -4464,7 +4753,7 @@ export default function Workspace() {
                 failures are two rows, and holding the taller box open would be
                 180px of empty panel below them.
               */}
-              {busy || !failedCount ? (
+              {!retrying.length && (busy || !failedCount) ? (
                 <RunRowList
                   className="h-[180px]"
                   settled={settledCount}
@@ -4485,48 +4774,265 @@ export default function Workspace() {
                   })}
                 />
               ) : (
-                <section
-                  aria-label="Documents that did not upload"
-                  className="max-h-[180px] overflow-y-auto rounded-lg border border-neutral-gray"
-                >
-                  <h3 className="sticky top-0 border-b border-neutral-gray bg-background px-3 py-2 text-xs font-semibold text-foreground">
-                    {failedCount} didn’t upload
-                    {/* One reason for the whole batch is said once. Repeating
-                        the same sentence under every filename is a column of
-                        identical grey text that the eye stops reading. */}
-                    {sharedFailureReason ? (
-                      <span className="font-normal text-secondary-foreground">
-                        {" — "}
-                        {sharedFailureReason}
-                      </span>
-                    ) : null}
-                  </h3>
-                  <ul>
-                    {files.map((f, i) =>
-                      uploadStatus[i] === "Failed" ? (
-                        <li
-                          key={`${f.name}-${f.size}-${i}`}
-                          className="flex items-start gap-3 border-b border-neutral-gray px-3 py-2.5 last:border-b-0"
+                (() => {
+                  /*
+                    Failures, sorted by what fixes them.
+
+                    A retry fixes an interrupted upload; nothing but a new file
+                    fixes a password-protected or damaged one. So the rows split
+                    into those two groups, each with its own action, and Retry
+                    all belongs to the first group only — it never offers to fix
+                    what it cannot. When every failure is the same kind there is
+                    one group, and the headings go: the panel header says the
+                    reason once.
+                  */
+                  const rows = files.flatMap((f, i) =>
+                    uploadStatus[i] === "Failed" || retrying.includes(i)
+                      ? [{ f, i, group: failGroups[i] ?? "retry" }]
+                      : []
+                  );
+                  const retryRows = rows.filter((r) => r.group === "retry");
+                  const replaceRows = rows.filter((r) => r.group === "replace");
+                  const grouped = !!retryRows.length && !!replaceRows.length;
+                  const kinds = new Map<
+                    string,
+                    { n: number; info: ReturnType<typeof classifyFailure> }
+                  >();
+                  rows.forEach(({ f, i }) => {
+                    if (uploadStatus[i] !== "Failed") return;
+                    const info = classifyFailure(reasonFor(f.name));
+                    const entry = kinds.get(info.key);
+                    kinds.set(info.key, { n: (entry?.n ?? 0) + 1, info });
+                  });
+                  const kindList = [...kinds.values()];
+                  const oneKind =
+                    kindList.length === 1 ? kindList[0].info : null;
+                  const running = busy && !!retrying.length;
+                  /* The reason a row carries itself: only when nothing above
+                     it has already said it. */
+                  const retryKinds = new Set(
+                    retryRows
+                      .filter(({ i }) => uploadStatus[i] === "Failed")
+                      .map(({ f }) => classifyFailure(reasonFor(f.name)).key)
+                  );
+                  const retryHeading =
+                    retryKinds.size === 1
+                      ? classifyFailure(
+                          reasonFor(
+                            retryRows.find(
+                              ({ i }) => uploadStatus[i] === "Failed"
+                            )!.f.name
+                          )
+                        )
+                      : null;
+                  const retryAll = !busy && retryableIndexes.length > 1 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 flex-none gap-1.5 bg-background text-primary"
+                      onClick={() => void retryUploads(retryableIndexes)}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                      Retry all
+                    </Button>
+                  );
+                  const renderRow = ({
+                    f,
+                    i,
+                    group,
+                  }: (typeof rows)[number]) => {
+                    const status = uploadStatus[i];
+                    const waiting =
+                      running && retrying.includes(i) && status === "Failed";
+                    const info = classifyFailure(reasonFor(f.name));
+                    const size =
+                      f.size >= 1024 * 1024
+                        ? `${(f.size / (1024 * 1024)).toFixed(1)} MB`
+                        : `${Math.max(1, Math.round(f.size / 1024))} KB`;
+                    // Said above already (one kind overall, or one kind in
+                    // this group): the row just says it did not make it.
+                    const saidAbove =
+                      !!oneKind ||
+                      (group === "retry" && grouped && !!retryHeading);
+                    const [stateText, stateClass] =
+                      status === "Uploading"
+                        ? ["Uploading…", "text-primary"]
+                        : status === "Uploaded"
+                          ? ["Uploaded", "text-success-green-foreground"]
+                          : waiting
+                            ? ["Waiting to retry", "text-secondary-foreground"]
+                            : [
+                                saidAbove ? "Not uploaded" : info.title,
+                                "text-destructive-foreground",
+                              ];
+                    const showDetail =
+                      status === "Failed" &&
+                      !waiting &&
+                      !saidAbove &&
+                      !!info.detail;
+                    return (
+                      <li
+                        key={`${f.name}-${f.size}-${i}`}
+                        className="flex items-center gap-3 border-b border-neutral-gray px-4 py-2.5 last:border-b-0"
+                      >
+                        <span
+                          className="grid h-[18px] w-[18px] flex-none place-items-center self-start pt-0.5"
+                          aria-hidden
                         >
-                          <XCircle
-                            className="mt-0.5 h-[18px] w-[18px] flex-none text-status-error"
-                            aria-hidden
-                          />
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm text-foreground">
-                              {f.name}
+                          {status === "Uploading" ? (
+                            <Loader2 className="h-[18px] w-[18px] animate-spin text-primary motion-reduce:animate-none" />
+                          ) : status === "Uploaded" ? (
+                            <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-status-success">
+                              <Check
+                                className="h-3 w-3 text-white"
+                                strokeWidth={3}
+                              />
                             </span>
-                            {sharedFailureReason ? null : (
-                              <span className={cn(T.sub, "block")}>
-                                {reasonFor(f.name)}
-                              </span>
-                            )}
+                          ) : waiting ? (
+                            <span className="box-border h-[15px] w-[15px] rounded-full border-2 border-neutral-gray" />
+                          ) : (
+                            <XCircle className="h-[18px] w-[18px] text-destructive-foreground" />
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm text-foreground">
+                            {f.name}
                           </span>
-                        </li>
-                      ) : null
-                    )}
-                  </ul>
-                </section>
+                          <span className="mt-0.5 flex items-center gap-1.5 text-xs">
+                            <span className="text-secondary-foreground">
+                              {size}
+                            </span>
+                            <span
+                              className="text-secondary-foreground"
+                              aria-hidden
+                            >
+                              ·
+                            </span>
+                            <span className={stateClass} role="status">
+                              {stateText}
+                            </span>
+                          </span>
+                          {showDetail && (
+                            <span className={cn(T.sub, "mt-0.5 block")}>
+                              {info.detail}
+                            </span>
+                          )}
+                        </span>
+                        {!busy &&
+                          status === "Failed" &&
+                          (group === "retry" ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 flex-none gap-1.5 px-2.5 text-xs text-secondary-foreground hover:text-primary"
+                              aria-label={`Retry ${f.name}`}
+                              onClick={() => void retryUploads([i])}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                              Retry
+                            </Button>
+                          ) : (
+                            /* A label around a hidden input, like the drop zone:
+                             the button is the file picker. */
+                            <label className="relative inline-flex h-8 flex-none cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-accent hover:text-primary focus-within:outline-none focus-within:ring-2 focus-within:ring-ring">
+                              <Upload className="h-3.5 w-3.5" aria-hidden />
+                              Choose file
+                              <input
+                                type="file"
+                                className="sr-only"
+                                accept=".pdf,.png,.jpg,.jpeg"
+                                aria-label={`Choose a new file for ${f.name}`}
+                                onChange={(e) => {
+                                  const picked = e.target.files?.[0];
+                                  e.target.value = "";
+                                  if (picked)
+                                    void retryUploads([i], {
+                                      index: i,
+                                      file: picked,
+                                    });
+                                }}
+                              />
+                            </label>
+                          ))}
+                      </li>
+                    );
+                  };
+                  const groupHeading = (
+                    title: string,
+                    detail?: string,
+                    action?: React.ReactNode
+                  ) => (
+                    <div className="flex items-center gap-3 border-b border-neutral-gray px-4 py-2">
+                      <p className="min-w-0 flex-1 text-xs">
+                        <span className="font-semibold text-foreground">
+                          {title}
+                        </span>
+                        {detail ? (
+                          <span className="text-secondary-foreground">
+                            {" "}
+                            · {detail}
+                          </span>
+                        ) : null}
+                      </p>
+                      {action}
+                    </div>
+                  );
+                  return (
+                    <section
+                      aria-label="Documents that did not upload"
+                      className="overflow-hidden rounded-lg border border-neutral-gray"
+                    >
+                      <header className="flex items-center gap-3 border-b border-neutral-gray bg-section px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-sm font-semibold text-foreground">
+                            {running
+                              ? "Sending again"
+                              : failedCount
+                                ? `${failedCount} document${failedCount === 1 ? "" : "s"} didn’t upload`
+                                : "All documents uploaded"}
+                          </h3>
+                          <p className={cn(T.sub, "mt-0.5")}>
+                            {running
+                              ? `${retrying.filter((i) => uploadStatus[i] === "Uploaded").length} of ${retrying.length} uploaded`
+                              : !failedCount
+                                ? "They’re being prepared for review."
+                                : oneKind
+                                  ? `${oneKind.title}. ${oneKind.detail}`.trim()
+                                  : kindList
+                                      .map(
+                                        ({ n, info }) => `${n} ${info.short}`
+                                      )
+                                      .join(" · ")}
+                          </p>
+                        </div>
+                        {!grouped && retryAll}
+                      </header>
+                      {/* The list takes whatever height the dialog has left under its 90vh
+                          cap (the rest of the panel is ~464px, ~397px once the
+                          short-screen rules kick in), so the dialog itself
+                          never scrolls; the list does, if it must. */}
+                      <div className="max-h-[clamp(72px,calc(90vh-464px),280px)] overflow-y-auto [@media(max-height:640px)]:max-h-[clamp(72px,calc(90vh-397px),280px)]">
+                        {grouped ? (
+                          <>
+                            {groupHeading(
+                              retryHeading
+                                ? retryHeading.title
+                                : "Can be retried",
+                              retryHeading?.detail,
+                              retryAll
+                            )}
+                            <ul>{retryRows.map(renderRow)}</ul>
+                            <div className="border-t border-neutral-gray" />
+                            {groupHeading("Needs a new file")}
+                            <ul>{replaceRows.map(renderRow)}</ul>
+                          </>
+                        ) : (
+                          <ul>{rows.map(renderRow)}</ul>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })()
               )}
               {/*
                 The batch size and the handoff line are gone.
@@ -4571,12 +5077,119 @@ export default function Workspace() {
           )}
         </div>
       </PageDialog>
+      <InboxWelcomeDialog
+        open={welcomeOpen}
+        onClose={closeWelcome}
+        companyName={company.name}
+        email={`${company.slug}@inbox.aiaccountant.app`}
+        maxFiles={MAX_UPLOAD_FILES}
+        arrivals={arrivals.total ? arrivals : undefined}
+        onReview={() => {
+          closeWelcome();
+          setFilters(defaultFilters);
+          setTab("Need review");
+          setPage(0);
+          setSelected([]);
+        }}
+        onTour={() => afterWelcome(() => guide.startJourney("inbox"))}
+        onSkip={closeWelcome}
+        onCopy={async () => {
+          try {
+            await navigator.clipboard.writeText(
+              `${company.slug}@inbox.aiaccountant.app`
+            );
+            notify(
+              "Forwarding address copied. Paste it into your email client."
+            );
+            return true;
+          } catch {
+            notify(
+              "Couldn’t copy the address. Select it and copy manually.",
+              "error"
+            );
+            return false;
+          }
+        }}
+        onWhatsApp={() => afterWelcome(() => setDialog("whatsapp"))}
+        onUpload={(incoming) =>
+          afterWelcome(() => {
+            intakeMode.current = "bulk";
+            setSource("upload");
+            setSender(actor);
+            setUploadErrors([]);
+            setFiles([]);
+            setUploadStatus([]);
+            if (incoming) addFiles(incoming, "upload");
+            setDialog("upload");
+          })
+        }
+      />
       <PageDialog
         open={dialog === "demo"}
         title="Prototype settings"
         description="Choose the modules this role can post to. These are local scenarios, not production access controls."
         onClose={() => setDialog("")}
       >
+        {/*
+          Which first visit the prototype tells. Switching starts the demo over
+          in that story — the same as a reload, which keeps the choice.
+        */}
+        <section className="mb-5 space-y-2">
+          <h2 className={T.section}>First visit</h2>
+          <div
+            role="radiogroup"
+            aria-label="First visit scenario"
+            className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+          >
+            {(
+              [
+                [
+                  "whatsapp",
+                  "WhatsApp registered before launch",
+                  "Documents are already waiting when Inbox opens.",
+                ],
+                ["new", "New user", "Inbox opens empty."],
+              ] as [Scenario, string, string][]
+            ).map(([value, label, detail]) => {
+              const active = (state.scenario || "whatsapp") === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => {
+                    if (active) return;
+                    applyScenario(value);
+                    startedInboxCompanies.clear();
+                    setDialog("");
+                    setFiles([]);
+                    setUploadStatus([]);
+                    setUploadErrors([]);
+                    setHandoff(false);
+                    setFilters(defaultFilters);
+                    setTab("Need review");
+                    setPage(0);
+                    setSelected([]);
+                    if (router.asPath !== "/inbox") void router.push("/inbox");
+                  }}
+                  className={cn(
+                    "rounded-md border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    active
+                      ? "border-primary bg-accent"
+                      : "border-neutral-gray hover:bg-accent/50"
+                  )}
+                >
+                  <span className="block text-sm font-medium text-foreground">
+                    {label}
+                  </span>
+                  <span className={T.sub}>{detail}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+        <h2 className={cn(T.section, "mb-2")}>Posting access</h2>
         <div className="space-y-1">
           {routes.map((r) => (
             <Label

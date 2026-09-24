@@ -769,6 +769,97 @@
     gap: 10px;
   }
 }
+/* ── Welcome dialog ──────────────────────────────────────────────────────
+   The same block, framed by a dialog instead of the page. It no longer rides
+   the middle of a tall scroller, so the auto margins go and the padding is the
+   dialog's own inset rather than the page gutter. */
+.inDialog {
+  margin-block: 0;
+  padding: 32px 40px 28px;
+}
+/* Once documents are waiting, reviewing them is the one primary action on the
+   dialog — so the upload button steps down to an outline. */
+.uploadButton.uploadQuiet {
+  background: #fff;
+  background-image: none;
+  border-color: var(--palette-blue-200);
+  color: var(--palette-blue-700);
+  box-shadow: none;
+}
+.uploadButton.uploadQuiet:hover {
+  background: var(--palette-blue-50);
+  background-image: none;
+}
+.connected {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--palette-green-200);
+  background: var(--palette-green-50);
+  color: var(--palette-green-800);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 18px;
+}
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 32px;
+}
+.registeredNumber {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-ink);
+}
+.registeredNumber strong {
+  color: var(--ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.footerEnd {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+.tourLink {
+  height: auto;
+  min-height: 36px;
+  padding: 0;
+  color: var(--palette-blue-700);
+  font-size: 13px;
+}
+.readingNote {
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted-ink);
+}
+.reviewButton {
+  gap: 8px;
+  min-height: 40px;
+  padding: 10px 16px;
+  background: var(--blue);
+  color: #fff;
+  font-weight: 500;
+}
+.reviewButton:hover {
+  background: var(--palette-blue-500);
+}
+@media (min-width: 851px) and (max-height: 800px) {
+  .inDialog {
+    padding-top: 24px;
+    padding-bottom: 20px;
+  }
+  .footer {
+    margin-top: 24px;
+  }
+}
 /* Below this the two panes start squeezing each other — the entry row and the
    intake heading wrap — so the split stacks instead. */
 @media (max-width: 1150px) {
@@ -1687,5 +1778,98 @@
   }
   .sceneCaption p {
     max-width: 260px;
+  }
+}
+
+/* ── Welcome dialog: always fully on screen ─────────────────────────────────
+   Kept last so it wins over the page-band rules above at equal specificity;
+   every rule is scoped to `.inDialog`, so the page layout is untouched.
+
+   Two levers. Width: the page stacked its panes below 1150px because the
+   sidebar took its share; the dialog has the full viewport, so it stays
+   side by side down to 900px — stacked, it was 1,200px tall. Height: on
+   short screens the type, spacing and card padding tighten and the
+   animation scales down (zoom, so the layout shrinks with it). The
+   animation itself is unchanged. */
+@media (min-width: 900px) and (max-width: 1150px) {
+  /* The page band capped itself at 720–780px to sit under the page title;
+     the dialog is the frame here, so the content fills it. */
+  .inDialog {
+    max-width: none;
+    padding: 28px 32px 24px;
+  }
+  .inDialog .split {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px;
+  }
+  .inDialog .channels {
+    grid-auto-rows: 1fr;
+    flex: 1;
+  }
+  .inDialog .intro h2 {
+    font-size: 28px;
+  }
+}
+@media (min-width: 900px) and (max-height: 700px) {
+  .inDialog {
+    padding: 22px 32px 18px;
+  }
+  .inDialog .split {
+    gap: 32px;
+  }
+  .inDialog .pitch {
+    gap: 14px;
+  }
+  .inDialog .intro h2 {
+    font-size: 26px;
+    margin-bottom: 10px;
+  }
+  .inDialog .intro > p {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  /* The card's floor is set for the page band; here the content sets it. */
+  .inDialog .demo {
+    min-height: 0;
+    margin-top: 0;
+    padding: 12px 18px 12px;
+  }
+  .inDialog .scene {
+    zoom: 0.72;
+  }
+  .inDialog .intakeHeading {
+    margin-bottom: 10px;
+  }
+  .inDialog .channels {
+    gap: 8px;
+  }
+  .inDialog .channel {
+    padding: 12px 16px;
+  }
+  .inDialog .footer {
+    margin-top: 14px;
+  }
+}
+/* Shorter still (a 1366×768 laptop at 125%, browser bars included): the
+   "How it works" label and the upload formats go — the formats are in the
+   upload panel itself — and the animation scales further. */
+@media (min-width: 900px) and (max-height: 580px) {
+  .inDialog {
+    padding-top: 18px;
+    padding-bottom: 14px;
+  }
+  .inDialog .demoTop,
+  .inDialog .fileHint {
+    display: none;
+  }
+  .inDialog .scene {
+    zoom: 0.6;
+  }
+  .inDialog .intro h2 {
+    font-size: 24px;
+  }
+  .inDialog .channel {
+    padding-block: 10px;
+    row-gap: 8px;
   }
 }

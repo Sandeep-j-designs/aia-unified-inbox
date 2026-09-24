@@ -154,6 +154,14 @@ type State = {
   events: Event[];
   tourDone: boolean;
   startedCompanies?: string[];
+  /**
+   * Companies whose welcome dialog has been seen this run. Closing it by any
+   * route counts — the dialog is an introduction, not a gate, and it does not
+   * come back on its own once someone has chosen to move past it.
+   */
+  welcomed?: string[];
+  /** Which first-visit story the prototype is telling. See `Scenario`. */
+  scenario?: Scenario;
   queue: string[];
   emailSuffix: Record<string, string>;
   waCompany: string;
@@ -455,6 +463,127 @@ function seed(): State {
     launchedAt: new Date().toISOString(),
   };
 }
+/**
+ * The two ways someone meets the Inbox for the first time.
+ *
+ * - `new` — nothing has been sent in yet. The welcome dialog opens over an
+ *   empty queue and the first upload brings the demo batch in with it.
+ * - `whatsapp` — the user registered with the WhatsApp bot before Inbox
+ *   launched, so documents were already arriving before they ever opened it.
+ *   The welcome dialog opens over a queue that is already full, and says so.
+ *
+ * The choice is kept in sessionStorage, not in the reset-on-load state: it is
+ * how the demo is set up rather than what happened in it, like the table's
+ * column layout, so refreshing replays the chosen story instead of switching
+ * it back.
+ *
+ * DEV: prototype-only. Production reads the queue it has; delete on transplant.
+ */
+export type Scenario = "new" | "whatsapp";
+const SCENARIO_KEY = "aia.inbox.scenario";
+export const DEFAULT_SCENARIO: Scenario = "whatsapp";
+function readScenario(): Scenario {
+  try {
+    const stored = sessionStorage.getItem(SCENARIO_KEY);
+    if (stored === "new" || stored === "whatsapp") return stored;
+  } catch {}
+  return DEFAULT_SCENARIO;
+}
+
+/** How many documents the WhatsApp story has waiting on first visit. */
+const WHATSAPP_BACKLOG = 18;
+/**
+ * The number the user registered with the WhatsApp bot. The welcome dialog
+ * shows it on the WhatsApp card, so they can see which phone is connected.
+ */
+export const REGISTERED_WHATSAPP = "+91 98450 12342";
+/**
+ * Whoever sent them. The registered number sends most of them; the rest are
+ * teammates on the same account, reused.
+ */
+const WHATSAPP_SENDERS = [
+  `${REGISTERED_WHATSAPP} (Priya R.)`,
+  "+91 99001 XXX17 (Ramesh K.)",
+  "+91 97411 XXX08 (Accounts, Shakun)",
+  "+91 90080 XXX63",
+];
+
+/**
+ * Turn one company's seeded queue into documents that came in on WhatsApp in
+ * the days before the user first opened the Inbox.
+ *
+ * Only the queue is rewritten. Posted records (Approved, and the prior voucher
+ * the hard duplicate matches) are the books, not arrivals, and stay as seeded.
+ * Documents still being read are kept first so the story always has a few
+ * finishing while the welcome dialog is up; the rest are the ones ready to
+ * review. Anything else in the seeded queue is dropped — a backlog of failures
+ * is not what a WhatsApp user who has never opened the Inbox would find.
+ */
+function withWhatsAppBacklog(base: State, company: string): State {
+  const queue = base.items.filter(
+    (item) => item.company === company && !item.priorVoucher && seedable(item)
+  );
+  const rank = (item: Item) =>
+    ["Received", "Extracting"].includes(item.status)
+      ? 0
+      : item.status === "Duplicate"
+        ? 1
+        : item.status === "Needs Review"
+          ? 2
+          : 3;
+  const picked = queue
+    .filter((item) => rank(item) < 3)
+    .sort((a, b) => rank(a) - rank(b))
+    .slice(0, WHATSAPP_BACKLOG);
+  const keep = new Set(picked.map((item) => item.id));
+  const now = Date.now();
+  const arrivals = picked.map(
+    (item, index): Item => ({
+      ...item,
+      source: "whatsapp",
+      sender: WHATSAPP_SENDERS[index % WHATSAPP_SENDERS.length],
+      subject: "—",
+      // Newest first, spread over the last three days. The ones still being
+      // read are the newest: they arrived minutes ago.
+      received: new Date(
+        now - (index < 4 ? (index + 1) * 4 * 60_000 : index * 3.8 * 3_600_000)
+      ).toISOString(),
+      // Slow enough that the welcome dialog opens while they are still being
+      // read, and counts them down as they finish.
+      ...(["Received", "Extracting"].includes(item.status)
+        ? { extractionDelay: 9000 + index * 3500 }
+        : {}),
+    })
+  );
+  const replaced = new Map(arrivals.map((item) => [item.id, item]));
+  return {
+    ...base,
+    startedCompanies: [...new Set([...(base.startedCompanies || []), company])],
+    items: base.items
+      .filter(
+        (item) =>
+          item.company !== company ||
+          item.priorVoucher ||
+          !seedable(item) ||
+          keep.has(item.id)
+      )
+      .map((item) => replaced.get(item.id) || item),
+  };
+}
+
+/** A fresh prototype state, told as the given first-visit story. */
+function seedFor(scenario: Scenario): State {
+  const base = { ...seed(), scenario };
+  if (scenario === "whatsapp") return withWhatsAppBacklog(base, base.waCompany);
+  // A new user has received nothing: the queue starts empty everywhere, and
+  // only the books (posted vouchers) are there. The seeded queue lives on as
+  // the templates `demoUploadDocuments` cuts batches from.
+  return {
+    ...base,
+    items: base.items.filter((item) => item.priorVoucher || !seedable(item)),
+  };
+}
+
 let state: State = seed();
 const server = state;
 let loaded = false;
@@ -547,6 +676,7 @@ export function init() {
     localStorage.removeItem(KEY);
     localStorage.removeItem("inbox.date-normalization.v2");
   } catch {}
+  state = seedFor(readScenario());
   listeners.forEach((f) => f());
   state.items
     .filter((x) => ["Received", "Extracting"].includes(x.status))
@@ -1237,22 +1367,40 @@ export function updatePosted(
 const seedable = (item: Item) =>
   item.status !== "Deleted" && item.status !== "Approved";
 
-export function demoUploadDocuments(company: string, count: number): Item[] {
-  const existing = state.items.filter(
-    (item) => item.company === company && seedable(item) && !item.file.blobId
-  );
+/**
+ * A batch of new demo documents, cut from the company's seeded queue.
+ *
+ * Always new items with ids of their own. It used to reuse whatever was
+ * already in the store first — fine while a bulk upload only ever happened on
+ * an empty Inbox, but a bulk upload over the WhatsApp backlog would have
+ * pulled those documents back into extraction as if they had just been sent.
+ *
+ * `from` stamps the channel the batch came in on; left out, each document
+ * keeps the channel it was seeded with.
+ */
+export function demoUploadDocuments(
+  company: string,
+  count: number,
+  from?: Pick<Item, "source" | "sender">
+): Item[] {
   const templates = seed().items.filter(
-    (item) => item.company === company && seedable(item)
+    (item) =>
+      item.company === company && seedable(item) && !item.priorVoucher
   );
   return Array.from({ length: count }, (_, index) => {
-    if (existing[index]) return structuredClone(existing[index]);
     const template = structuredClone(templates[index % templates.length]);
     return {
       ...template,
+      ...(from || {}),
       id: `DEMO-${company}-${crypto.randomUUID()}`,
       file: {
         ...template.file,
-        name: `Document ${index + 1} · ${template.file.name}`,
+        // A second pass over the templates is numbered, so no two rows in
+        // one batch share a file name.
+        name:
+          index < templates.length
+            ? template.file.name
+            : `Document ${index + 1} · ${template.file.name}`,
       },
     };
   });
@@ -1340,12 +1488,13 @@ export function beginUploadedExtraction(
  * update is a no-op for an item it cannot find.
  */
 export function resetCompany(company: string) {
-  const fresh = seed();
+  const fresh = seedFor(state.scenario || DEFAULT_SCENARIO);
   state = {
     ...state,
-    startedCompanies: (state.startedCompanies || []).filter(
-      (id) => id !== company
-    ),
+    startedCompanies: [
+      ...(state.startedCompanies || []).filter((id) => id !== company),
+      ...(fresh.startedCompanies || []).filter((id) => id === company),
+    ],
     items: [
       ...state.items.filter((item) => item.company !== company),
       ...fresh.items.filter((item) => item.company === company),
@@ -1354,6 +1503,24 @@ export function resetCompany(company: string) {
     queue: [],
   };
   persist();
+}
+
+/**
+ * Start the prototype over as the other first-visit story, without a reload.
+ *
+ * Everything goes — every company's documents, events and welcome flags — so
+ * the switch lands exactly where a page load would. The company being viewed
+ * is kept; being thrown to another one is not part of either story.
+ */
+export function applyScenario(scenario: Scenario) {
+  try {
+    sessionStorage.setItem(SCENARIO_KEY, scenario);
+  } catch {}
+  state = { ...seedFor(scenario), company: state.company };
+  persist();
+  state.items
+    .filter((x) => ["Received", "Extracting"].includes(x.status))
+    .forEach((x) => scheduleExtraction(x.id));
 }
 
 export const BULK_VOUCHER_TYPES = [

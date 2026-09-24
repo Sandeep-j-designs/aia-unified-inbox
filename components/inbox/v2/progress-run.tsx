@@ -243,7 +243,7 @@ export const RunRowItem = ({ row }: { row: RunRow }) => (
           <Check className="h-3 w-3 text-white" strokeWidth={3} />
         </span>
       ) : row.state === "failed" ? (
-        <XCircle className="h-[18px] w-[18px] text-status-error animate-in fade-in-0 zoom-in-95 duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none" />
+        <XCircle className="h-[18px] w-[18px] text-destructive-foreground animate-in fade-in-0 zoom-in-95 duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none" />
       ) : (
         <Loader2 className="h-[18px] w-[18px] animate-spin text-primary" />
       )}
