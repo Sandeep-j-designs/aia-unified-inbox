@@ -15,6 +15,14 @@ import {
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 
+/**
+ * A heading inside a grouped dropdown: small, muted, and on the items' own
+ * left edge. The production CommandGroup leaves its heading unstyled, which
+ * made headings the largest text in the list and flush against the border.
+ */
+export const GROUP_CLASS =
+  "p-0 [&:not(:first-child)]:mt-2 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-caption-1 [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-secondary-foreground";
+
 /** Inline single-select, matching the component-library's searchable dropdown. */
 export default function EditableCell({
   label,
@@ -139,7 +147,7 @@ export default function EditableCell({
                     <CommandGroup
                       key={group.heading}
                       heading={group.heading}
-                      className="p-0 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-0 [&_[cmdk-group-heading]]:text-caption-1 [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-secondary-foreground"
+                      className={GROUP_CLASS}
                     >
                       {group.options.map(renderChoice)}
                     </CommandGroup>

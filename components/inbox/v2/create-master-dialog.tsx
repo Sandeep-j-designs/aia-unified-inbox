@@ -56,7 +56,8 @@ type Props = {
 };
 
 /**
- * Create a ledger or a vendor from the bulk-edit bar, then apply it.
+ * Create a ledger or a vendor from the bulk-edit bar, and stage it for the
+ * selection. Like every bulk edit, it is written to the rows on Approve.
  *
  * A vendor is a ledger too, filed under Sundry Creditors, so both are one
  * dialog. It asks only what the new master cannot be made without. Anything
@@ -64,8 +65,8 @@ type Props = {
  * not to a bulk edit.
  *
  * DEV: prototype-only. On Create, POST /api/accounting-masters/ledgers (a
- * vendor is `{ group: "Sundry Creditors", gstin }`), then apply the returned
- * name to the selection.
+ * vendor is `{ group: "Sundry Creditors", gstin }`), then stage the returned
+ * name for the selection.
  */
 const CreateMasterDialog = ({
   kind,
@@ -120,7 +121,8 @@ const CreateMasterDialog = ({
               {kind === "vendor" ? "Create vendor" : "New ledger"}
             </DialogTitle>
             <DialogDescription>
-              It is added to your books and set on the selected documents.
+              It is added to your books, and set on the selected documents when
+              you approve them.
             </DialogDescription>
           </DialogHeader>
 
@@ -219,7 +221,7 @@ const CreateMasterDialog = ({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit">Create and apply</Button>
+            <Button type="submit">Create</Button>
           </DialogFooter>
         </form>
       </DialogContent>

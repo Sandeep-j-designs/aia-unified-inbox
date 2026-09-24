@@ -118,7 +118,7 @@ import { cn } from "@/lib/utils";
 import { ColumnFilter, FilterPanel } from "./filter-panel";
 import type { FilterOption } from "./filter-panel";
 import Preview from "./preview";
-import EditableCell from "./editable-cell";
+import EditableCell, { GROUP_CLASS } from "./editable-cell";
 import CreateMasterDialog from "./create-master-dialog";
 import { InboxWelcomeDialog } from "./kickstart";
 import {
@@ -716,13 +716,16 @@ export default function Workspace() {
     [widths, setWidths] = useState<Record<string, number>>({});
   const [resizing, setResizing] = useState<string | null>(null);
   /**
-   * What each bulk field was last set to on this selection, so the bar can say
-   * so. Cleared when the selection changes, because it describes these rows.
+   * Bulk edits waiting for Approve. Picking a value on the bar only stages it;
+   * nothing on the rows changes until Approve applies the staged values and
+   * approves in the same step. Dropped when the selection is emptied.
    */
-  const [bulkApplied, setBulkApplied] = useState<
+  const [bulkStaged, setBulkStaged] = useState<
     Partial<Record<BulkField, string>>
   >({});
-  useEffect(() => setBulkApplied({}), [selected.join("|")]);
+  useEffect(() => {
+    if (!selected.length) setBulkStaged({});
+  }, [selected.length]);
   /** Ledgers and vendors created from the bulk bar, this session. */
   const [createdMasters, setCreatedMasters] = useState<{
     Ledger: string[];
@@ -1751,7 +1754,7 @@ export default function Workspace() {
     ["Needs Review", "Duplicate"].includes(item.status) &&
     state.permissions.includes(item.route);
 
-  const reportBulk = (verb: string, result: BulkResult, keep = false) => {
+  const reportBulk = (verb: string, result: BulkResult) => {
     const breakdown = Object.entries(result.reasons)
       .map(([reason, count]) => `${reason}: ${count}`)
       .join("; ");
@@ -1759,12 +1762,37 @@ export default function Workspace() {
       `${verb} ${result.changed}. Skipped ${result.skipped}${breakdown ? ` — ${breakdown}.` : "."}`,
       result.skipped ? "warning" : "success"
     );
-    // An edit keeps the selection, so the same rows can take the next field.
-    // Approve and Delete take the rows out of the queue, so they clear it.
-    if (!keep) setSelected([]);
+    setSelected([]);
   };
-  const bulkApprove = () =>
-    reportBulk("Approved", applyBulkAction(selected, "Approve"));
+  /**
+   * Apply the staged edits, then approve.
+   *
+   * Voucher type goes first, because it can move a row to another route, and a
+   * vendor or ledger set before that is set against the wrong one. A row that
+   * refuses any staged edit is not approved: approving it would post values
+   * the accountant did not choose. The toast counts it as skipped, with why.
+   */
+  const bulkApprove = () => {
+    const edits = BULK_APPLY_ORDER.filter((field) => bulkStaged[field]);
+    const refused: BulkResult = { changed: 0, skipped: 0, reasons: {} };
+    const ready = selected.filter((id) => {
+      for (const field of edits) {
+        const result = applyBulkAction([id], field, bulkStaged[field]!);
+        if (!result.skipped) continue;
+        refused.skipped++;
+        for (const [reason, count] of Object.entries(result.reasons))
+          refused.reasons[reason] = (refused.reasons[reason] || 0) + count;
+        return false;
+      }
+      return true;
+    });
+    const approved = applyBulkAction(ready, "Approve");
+    for (const [reason, count] of Object.entries(refused.reasons))
+      approved.reasons[reason] = (approved.reasons[reason] || 0) + count;
+    approved.skipped += refused.skipped;
+    setBulkStaged({});
+    reportBulk("Approved", approved);
+  };
   /*
     Every delete asks first, and asks in one place.
 
@@ -1808,19 +1836,16 @@ export default function Workspace() {
       notify(`Deleted ${x.file.name}.`);
     });
   /*
-    Reassignment lands the moment a value is picked.
-
-    It used to open a drawer per field — choose Vendor, search, select, press
-    Apply to selected, close — four steps to set one value on rows that were
-    already chosen. The bar holds the options itself now, so picking IS the
-    action, and the toast is what reports it.
+    A pick stages the value; Approve applies it. Picking the staged value again
+    takes it back off.
   */
-  const applyBulk = (field: BulkField, value: string) => {
-    const result = applyBulkAction(selected, field, value);
-    reportBulk("Updated", result, true);
-    if (result.changed)
-      setBulkApplied((applied) => ({ ...applied, [field]: value }));
-  };
+  const stageBulk = (field: BulkField, value: string) =>
+    setBulkStaged((staged) => {
+      const next = { ...staged };
+      if (next[field] === value) delete next[field];
+      else next[field] = value;
+      return next;
+    });
   // First intake simulates the full dataset; later selections add one document.
   // Pass files directly: React state may still contain the previous selection.
   const addFiles = (
@@ -4170,12 +4195,17 @@ export default function Workspace() {
                     <div
                       role="toolbar"
                       aria-label="Selected document actions"
-                      className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-2 rounded-xl border border-primary/30 bg-background px-4 py-3 text-foreground shadow-xl"
+                      // One line, always. Staged values make the field buttons
+                      // wider, and wrapping put Delete on a row of its own; the
+                      // field buttons truncate their value instead, and only
+                      // a window too narrow for even that scrolls sideways.
+                      className="pointer-events-auto flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto rounded-xl border border-primary/30 bg-background px-4 py-3 text-foreground shadow-xl [&>*]:shrink-0"
                     >
-                      <strong className="whitespace-nowrap py-2 pr-1 text-sm font-semibold">
-                        {selected.length}{" "}
-                        {selected.length === 1 ? "document" : "documents"}{" "}
-                        selected
+                      <strong
+                        className="whitespace-nowrap py-2 pr-1 text-sm font-semibold"
+                        title={`${selected.length} ${selected.length === 1 ? "document" : "documents"} selected`}
+                      >
+                        {selected.length} selected
                       </strong>
                       {/*
                       The checkbox in the header speaks for the page it is on;
@@ -4223,8 +4253,8 @@ export default function Workspace() {
                               ? voucherTypeGroups
                               : undefined
                           }
-                          applied={bulkApplied[field]}
-                          onPick={(value) => applyBulk(field, value)}
+                          staged={bulkStaged[field]}
+                          onPick={(value) => stageBulk(field, value)}
                           onCreate={
                             field === "Ledger" || field === "Vendor"
                               ? (name) => setCreating({ field, name })
@@ -4254,14 +4284,22 @@ export default function Workspace() {
                           notify(
                             `${field === "Vendor" ? "Vendor" : "Ledger"} “${name}” created.`
                           );
-                          applyBulk(field, name);
+                          setBulkStaged((staged) => ({
+                            ...staged,
+                            [field]: name,
+                          }));
                         }}
                       />
                       <Button size="sm" onClick={bulkApprove}>
                         <Check className="h-4 w-4" />
-                        Approve
+                        {/* Says when it will also write the staged edits, so
+                            the bar never changes rows the user did not expect. */}
+                        {Object.keys(bulkStaged).length
+                          ? "Apply & approve"
+                          : "Approve"}
                       </Button>
                       <BulkButton
+                        label="Delete"
                         onClick={() => {
                           askDelete(
                             `${selected.length} document${selected.length === 1 ? "" : "s"}`,
@@ -4275,7 +4313,9 @@ export default function Workspace() {
                         }}
                       >
                         <Trash2 className="h-4 w-4" />
-                        Delete
+                        {/* Word below xl, where the bar needs the width for
+                            staged values; the icon keeps its label. */}
+                        <span className="hidden xl:inline">Delete</span>
                       </BulkButton>
                       {/* A Restore button used to sit here behind
                           `tab === "Deleted"`. There is no Deleted tab — the
@@ -5615,9 +5655,12 @@ const DangerButton = ({
 /** Secondary action inside the floating selection toolbar. */
 const BulkButton = ({
   children,
+  label,
   onClick,
 }: {
   children: React.ReactNode;
+  /** Names the button when its word is hidden at narrow widths. */
+  label?: string;
   onClick: () => void;
 }) => (
   // Same reasoning as DangerButton: it matches the reassign dropdowns beside
@@ -5626,6 +5669,8 @@ const BulkButton = ({
     variant="outline"
     size="sm"
     onClick={onClick}
+    aria-label={label}
+    title={label}
     className="whitespace-nowrap text-primary"
   >
     {children}
@@ -5681,6 +5726,22 @@ const RowActions = ({
  * There is no Route: Voucher type carries it, grouped by the voucher each type
  * posts as, the same as the table's dropdown.
  */
+/**
+ * What a staged button calls its field. The value is the news once something
+ * is staged, so the field name gives up the width; the full pair is in the
+ * button's title.
+ */
+const BULK_SHORT: Partial<Record<BulkField, string>> = {
+  "GST Registration": "GST",
+  "Voucher Type": "Voucher",
+};
+/** The order staged edits are written in on Approve. See `bulkApprove`. */
+const BULK_APPLY_ORDER: BulkField[] = [
+  "Voucher Type",
+  "Vendor",
+  "GST Registration",
+  "Ledger",
+];
 const BULK_FIELDS: BulkField[] = [
   "Vendor",
   "GST Registration",
@@ -5704,7 +5765,7 @@ const BulkReassign = ({
   field,
   options,
   groups,
-  applied,
+  staged,
   onPick,
   onCreate,
 }: {
@@ -5712,8 +5773,8 @@ const BulkReassign = ({
   options: string[];
   /** Lay the options out under headings, as the Voucher type cell does. */
   groups?: { heading: string; options: readonly string[] }[];
-  /** The value this field was set to on the current selection, if any. */
-  applied?: string;
+  /** The value waiting for Approve, if any. */
+  staged?: string;
   onPick: (value: string) => void;
   /** Offer "Create …" at the foot of the list, seeded with the search text. */
   onCreate?: (name: string) => void;
@@ -5731,7 +5792,7 @@ const BulkReassign = ({
       }}
     >
       <span className="truncate">{value}</span>
-      {value === applied && (
+      {value === staged && (
         <Check className="ml-auto h-4 w-4 text-primary" aria-hidden />
       )}
     </CommandItem>
@@ -5749,18 +5810,30 @@ const BulkReassign = ({
         <Button
           variant="outline"
           size="sm"
-          // Set on this selection: the button says to what, so several edits
-          // in a row can be read back off the bar before approving.
+          // Staged: the button says to what, so the edits Approve will write
+          // can be read back off the bar first.
           className={cn(
-            "max-w-[240px] whitespace-nowrap text-primary",
-            applied && "border-primary bg-accent"
+            // The one thing on the bar allowed to shrink: its value truncates
+            // before anything wraps.
+            "min-w-[96px] max-w-[200px] !shrink whitespace-nowrap text-primary",
+            staged && "border-primary bg-accent"
           )}
-          title={applied ? `${field}: ${applied}` : undefined}
+          title={
+            staged ? `${field}: ${staged} — applied on Approve` : undefined
+          }
         >
-          {applied && <Check className="h-4 w-4 flex-none" aria-hidden />}
-          <span className="truncate">
-            {applied ? `${field} · ${applied}` : field}
-          </span>
+          {/* No check here: the filled border already says "staged", and
+              the 24px it took is what the value needs at narrow widths. */}
+          {staged ? (
+            // The field name never truncates, only the value: "Vouch…" names
+            // nothing, "Voucher · Pay…" still says which button this is.
+            <>
+              <span className="flex-none">{BULK_SHORT[field] || field} ·</span>
+              <span className="min-w-0 truncate">{staged}</span>
+            </>
+          ) : (
+            <span className="truncate">{field}</span>
+          )}
           <ChevronDown className="h-4 w-4 flex-none opacity-70" aria-hidden />
         </Button>
       </PopoverTrigger>
@@ -5772,13 +5845,17 @@ const BulkReassign = ({
             value={query}
             onValueChange={setQuery}
           />
-          <CommandList className="max-h-64">
+          <CommandList className="max-h-64 p-1">
             <CommandEmpty>
               No matching {field.toLowerCase()} found.
             </CommandEmpty>
             {groups
               ? groups.map((group) => (
-                  <CommandGroup key={group.heading} heading={group.heading}>
+                  <CommandGroup
+                    key={group.heading}
+                    heading={group.heading}
+                    className={GROUP_CLASS}
+                  >
                     {group.options.map(item)}
                   </CommandGroup>
                 ))
