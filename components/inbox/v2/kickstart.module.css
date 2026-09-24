@@ -1873,3 +1873,111 @@
     row-gap: 8px;
   }
 }
+
+/* One card for all three channels.
+
+   The cards had drifted into three treatments — Upload on a blue-tinted
+   gradient, Email white with a grey icon, WhatsApp white with a green icon
+   and a full-width green bar — so they read as three components rather than
+   one list, and the green bar, a status, outweighed every action on the
+   dialog. Now the surface and the icon tile are shared, blue carries the
+   structure, and green is kept to two small marks on WhatsApp: its icon, so
+   the channel is recognisable, and the check on what it has delivered. */
+.upload {
+  background: #fff;
+}
+.channelIcon,
+.upload .channelIcon {
+  background: var(--palette-blue-50);
+  border-color: var(--palette-blue-100);
+  color: var(--blue);
+}
+.upload:hover,
+.upload.dragging {
+  background: var(--palette-blue-50);
+}
+/* A status line, not a button: no fill, no border, no button height. */
+.connected {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-weight: 500;
+}
+.connected svg {
+  color: var(--palette-green-700);
+}
+
+/* Each channel in its own hue, at the same strength.
+
+   Blue for upload (the brand), sky blue for email, green for WhatsApp. Red is
+   left out: it means an error everywhere else in the product. Every card
+   spends its hue in the same three places at the same palette steps — the
+   icon tile, a wash in the top-right corner, and the motif — so no one card
+   outweighs the others, and the actions stay in the brand blue. */
+.upload {
+  --tone-50: var(--palette-blue-50);
+  --tone-100: var(--palette-blue-100);
+  --tone-200: var(--palette-blue-200);
+  --tone-600: var(--palette-blue-600);
+}
+/* Email takes the chart blues: --chart-3 for the tint and --chart-4 for the
+   icon. It stays in the brand's own family, but sits far enough from upload's
+   indigo (hue 230) at hue 210 to read as its own channel. Amber was tried and
+   dropped because it reads as a warning. */
+.email {
+  --tone-50: hsl(var(--chart-3) / 0.12);
+  --tone-100: hsl(var(--chart-3) / 0.35);
+  --tone-200: hsl(var(--chart-3) / 0.7);
+  --tone-600: hsl(var(--chart-4));
+}
+.whatsapp {
+  --tone-50: var(--palette-green-50);
+  --tone-100: var(--palette-green-100);
+  --tone-200: var(--palette-green-200);
+  --tone-600: var(--palette-green-700);
+}
+.upload,
+.email,
+.whatsapp {
+  background:
+    radial-gradient(ellipse 60% 90% at 100% 0, var(--tone-100), transparent 70%),
+    #fff;
+}
+.upload .channelIcon,
+.email .channelIcon,
+.whatsapp .channelIcon {
+  background: var(--tone-50);
+  border-color: var(--tone-200);
+  color: var(--tone-600);
+}
+.upload .channelMotif,
+.email .channelMotif,
+.whatsapp .channelMotif {
+  color: var(--tone-600);
+}
+.upload:hover,
+.upload.dragging,
+.email:hover,
+.whatsapp:hover {
+  border-color: var(--tone-200);
+  background:
+    radial-gradient(ellipse 60% 90% at 100% 0, var(--tone-100), transparent 70%),
+    var(--tone-50);
+}
+
+/* The address field sits in the email card, so it takes the card's tone rather
+   than the brand lavender it was drawn in. The indigo field inside a sky-blue
+   card read as two blues arguing. The address itself is ink, because it is
+   something to read and copy, not decoration. */
+.email .emailAddress {
+  background: var(--tone-50);
+  border-color: var(--tone-200);
+}
+.email .emailAddress code {
+  color: var(--ink);
+}
+.email .emailAddress button {
+  color: var(--tone-600);
+}
