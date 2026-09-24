@@ -1780,6 +1780,28 @@ export default function Workspace() {
     notify(`${field} updated.`);
     return true;
   };
+  /**
+   * Approve one row from its Status dropdown. The same check as the review
+   * form; the table has no red fields to point at, so a refusal names what is
+   * missing instead.
+   */
+  const approveRow = (x: Item) => {
+    const error = approve(x.id);
+    if (error) {
+      const current = getState().items.find((item) => item.id === x.id);
+      const missing = current ? missingFields(current) : [];
+      notify(
+        `${x.file.name} can’t be approved yet.\n${
+          missing.length ? `Missing ${missing.join(", ")}.` : error
+        }`,
+        "error"
+      );
+      return;
+    }
+    notify(
+      `Approved ${getState().items.find((item) => item.id === x.id)?.form.voucherNo || x.file.name}.`
+    );
+  };
   const canEditTableItem = (item: Item) =>
     !moduleRoute &&
     ["Needs Review", "Duplicate"].includes(item.status) &&
@@ -4135,6 +4157,57 @@ export default function Workspace() {
                                       <span className="block truncate text-caption-1 font-medium text-secondary-foreground">
                                         {age(x.received)}
                                       </span>
+                                    </div>
+                                  ) : x.status === "Needs Review" &&
+                                    canEditTableItem(x) ? (
+                                    // Needs Review → Approved is the one
+                                    // status change the table offers. Nothing
+                                    // goes back from Approved, and Duplicate
+                                    // is the system's finding, not a choice,
+                                    // so every other status stays a plain pill.
+                                    <div
+                                      onClick={(e) => e.stopPropagation()}
+                                      onKeyDown={(e) => e.stopPropagation()}
+                                    >
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <button
+                                            type="button"
+                                            aria-label={`Change status of ${x.file.name}`}
+                                            className="flex max-w-full items-center rounded-md hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                                          >
+                                            {/* The chevron is inside the pill:
+                                                beside it, the column's edge
+                                                clipped it off. */}
+                                            <StatusPill
+                                              status={x.status}
+                                              className={tablePillClass}
+                                              trailing={
+                                                <ChevronDown
+                                                  aria-hidden
+                                                  // Inline: Badge sets its label
+                                                  // in one truncating span, and an
+                                                  // svg is a block by default.
+                                                  className="ml-1 inline size-3 align-[-2px]"
+                                                />
+                                              }
+                                            />
+                                          </button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent
+                                          align="start"
+                                          className="min-w-[160px]"
+                                        >
+                                          <DropdownMenuItem
+                                            onSelect={() => approveRow(x)}
+                                          >
+                                            <StatusPill
+                                              status="Approved"
+                                              className={tablePillClass}
+                                            />
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
                                     </div>
                                   ) : (
                                     <StatusPill

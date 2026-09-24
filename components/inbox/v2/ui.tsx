@@ -123,7 +123,16 @@ const STATUS_TONE: Record<Status, PillTone> = {
   Deleted: "neutral",
 };
 
-export const StatusPill = ({ status, className }: { status: Status; className?: string }) => (
+export const StatusPill = ({
+  status,
+  className,
+  trailing,
+}: {
+  status: Status;
+  className?: string;
+  /** Drawn inside the pill after the word, e.g. a dropdown's chevron. */
+  trailing?: React.ReactNode;
+}) => (
   // max-w-full with a truncating label, so a narrow Status column ellipses the
   // word inside an intact pill rather than slicing the pill's ground off. The
   // tone survives truncation, and the tone is the part being scanned — which is
@@ -132,6 +141,7 @@ export const StatusPill = ({ status, className }: { status: Status; className?: 
     icon={status === "Extracting" ? <Loader2 aria-hidden className="size-2.5 flex-none animate-spin motion-reduce:animate-none" /> : undefined}
   >
     {status}
+    {trailing}
   </Pill>
 );
 

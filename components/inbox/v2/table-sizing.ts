@@ -11,7 +11,7 @@ export const COLUMN_SIZES: Record<
   "GST Registration": { min: 150, preferred: 180, max: 360 },
   Amount: { min: 120, preferred: 130, max: 220 },
   Received: { min: 168, preferred: 190, max: 280 },
-  Status: { min: 120, preferred: 130, max: 200 },
+  Status: { min: 140, preferred: 150, max: 220 },
 };
 export const SELECT_WIDTH = 40;
 /**
