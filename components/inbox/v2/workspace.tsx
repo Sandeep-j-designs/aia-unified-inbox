@@ -33,6 +33,7 @@ import {
   MessageCircle,
   MoreVertical,
   Pin,
+  Plus,
   PinOff,
   RotateCcw,
   Search,
@@ -84,6 +85,7 @@ import {
   CommandInput,
   CommandList,
   CommandEmpty,
+  CommandGroup,
   CommandItem,
 } from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
@@ -117,6 +119,7 @@ import { ColumnFilter, FilterPanel } from "./filter-panel";
 import type { FilterOption } from "./filter-panel";
 import Preview from "./preview";
 import EditableCell from "./editable-cell";
+import CreateMasterDialog from "./create-master-dialog";
 import { InboxWelcomeDialog } from "./kickstart";
 import {
   ACTIONS_WIDTH,
@@ -712,6 +715,23 @@ export default function Workspace() {
     [pinned, setPinned] = useState(DEFAULT_PINNED),
     [widths, setWidths] = useState<Record<string, number>>({});
   const [resizing, setResizing] = useState<string | null>(null);
+  /**
+   * What each bulk field was last set to on this selection, so the bar can say
+   * so. Cleared when the selection changes, because it describes these rows.
+   */
+  const [bulkApplied, setBulkApplied] = useState<
+    Partial<Record<BulkField, string>>
+  >({});
+  useEffect(() => setBulkApplied({}), [selected.join("|")]);
+  /** Ledgers and vendors created from the bulk bar, this session. */
+  const [createdMasters, setCreatedMasters] = useState<{
+    Ledger: string[];
+    Vendor: string[];
+  }>({ Ledger: [], Vendor: [] });
+  const [creating, setCreating] = useState<{
+    field: "Ledger" | "Vendor";
+    name: string;
+  } | null>(null);
   const resizeCleanup = useRef<(() => void) | null>(null);
   const gridElement = useRef<HTMLDivElement | null>(null);
   useEffect(() => () => resizeCleanup.current?.(), []);
@@ -1399,19 +1419,9 @@ export default function Workspace() {
   const allFilteredSelected =
     !!filtered.length && filtered.every((x) => selected.includes(x.id));
   /**
-   * The routes this role can post to, by the name the queue gives them.
-   *
-   * Offering a route the role has no write access to would be offering a pick
-   * the store then refuses — the skip reason would be the first anyone heard
-   * of it.
-   */
-  const routeLabelOptions = routes
-    .filter((r) => state.permissions.includes(r))
-    .map((r) => ROUTE_LABELS[r]);
-  /**
    * The Voucher type dropdown, grouped by the voucher each type posts as.
-   * Groups for a route this role cannot write to are left out, for the same
-   * reason as the route options above.
+   * Groups for a route this role cannot write to are left out: offering one
+   * would be offering a pick the store then refuses.
    */
   const voucherTypeGroups = VOUCHER_GROUPS.filter((group) =>
     state.permissions.includes(group.route)
@@ -1427,12 +1437,12 @@ export default function Workspace() {
   const bulkOptions = (field: BulkField): string[] => {
     if (field === "Voucher Type") return [...BULK_VOUCHER_TYPES];
     if (field === "GST Registration") return company.branches;
-    if (field === "Route") return routeLabelOptions;
     return [
       ...new Set(
         field === "Vendor"
-          ? all.map((x) => x.form.party)
+          ? [...createdMasters.Vendor, ...all.map((x) => x.form.party)]
           : [
+              ...createdMasters.Ledger,
               ...ledgerOptions,
               ...all.flatMap((x) => x.form.lines.map((line) => line.ledger)),
             ]
@@ -1741,7 +1751,7 @@ export default function Workspace() {
     ["Needs Review", "Duplicate"].includes(item.status) &&
     state.permissions.includes(item.route);
 
-  const reportBulk = (verb: string, result: BulkResult) => {
+  const reportBulk = (verb: string, result: BulkResult, keep = false) => {
     const breakdown = Object.entries(result.reasons)
       .map(([reason, count]) => `${reason}: ${count}`)
       .join("; ");
@@ -1749,7 +1759,9 @@ export default function Workspace() {
       `${verb} ${result.changed}. Skipped ${result.skipped}${breakdown ? ` — ${breakdown}.` : "."}`,
       result.skipped ? "warning" : "success"
     );
-    setSelected([]);
+    // An edit keeps the selection, so the same rows can take the next field.
+    // Approve and Delete take the rows out of the queue, so they clear it.
+    if (!keep) setSelected([]);
   };
   const bulkApprove = () =>
     reportBulk("Approved", applyBulkAction(selected, "Approve"));
@@ -1803,8 +1815,12 @@ export default function Workspace() {
     already chosen. The bar holds the options itself now, so picking IS the
     action, and the toast is what reports it.
   */
-  const applyBulk = (field: BulkField, value: string) =>
-    reportBulk("Updated", applyBulkAction(selected, field, value));
+  const applyBulk = (field: BulkField, value: string) => {
+    const result = applyBulkAction(selected, field, value);
+    reportBulk("Updated", result, true);
+    if (result.changed)
+      setBulkApplied((applied) => ({ ...applied, [field]: value }));
+  };
   // First intake simulates the full dataset; later selections add one document.
   // Pass files directly: React state may still contain the previous selection.
   const addFiles = (
@@ -4202,9 +4218,45 @@ export default function Workspace() {
                           key={field}
                           field={field}
                           options={bulkOptions(field)}
+                          groups={
+                            field === "Voucher Type"
+                              ? voucherTypeGroups
+                              : undefined
+                          }
+                          applied={bulkApplied[field]}
                           onPick={(value) => applyBulk(field, value)}
+                          onCreate={
+                            field === "Ledger" || field === "Vendor"
+                              ? (name) => setCreating({ field, name })
+                              : undefined
+                          }
                         />
                       ))}
+                      <CreateMasterDialog
+                        kind={
+                          creating?.field === "Vendor"
+                            ? "vendor"
+                            : creating
+                              ? "ledger"
+                              : null
+                        }
+                        initialName={creating?.name || ""}
+                        existing={creating ? bulkOptions(creating.field) : []}
+                        onClose={() => setCreating(null)}
+                        onCreate={(name) => {
+                          if (!creating) return;
+                          const field = creating.field;
+                          setCreatedMasters((masters) => ({
+                            ...masters,
+                            [field]: [...masters[field], name],
+                          }));
+                          setCreating(null);
+                          notify(
+                            `${field === "Vendor" ? "Vendor" : "Ledger"} “${name}” created.`
+                          );
+                          applyBulk(field, name);
+                        }}
+                      />
                       <Button size="sm" onClick={bulkApprove}>
                         <Check className="h-4 w-4" />
                         Approve
@@ -5626,11 +5678,10 @@ const RowActions = ({
 /**
  * The fields a selection can be reassigned on, in the bar's order.
  *
- * Route leads: it decides which module the rest of the row belongs to, and a
- * vendor or ledger chosen before it is a value set against the wrong one.
+ * There is no Route: Voucher type carries it, grouped by the voucher each type
+ * posts as, the same as the table's dropdown.
  */
 const BULK_FIELDS: BulkField[] = [
-  "Route",
   "Vendor",
   "GST Registration",
   "Voucher Type",
@@ -5652,24 +5703,65 @@ const BULK_FIELDS: BulkField[] = [
 const BulkReassign = ({
   field,
   options,
+  groups,
+  applied,
   onPick,
+  onCreate,
 }: {
   field: BulkField;
   options: string[];
+  /** Lay the options out under headings, as the Voucher type cell does. */
+  groups?: { heading: string; options: readonly string[] }[];
+  /** The value this field was set to on the current selection, if any. */
+  applied?: string;
   onPick: (value: string) => void;
+  /** Offer "Create …" at the foot of the list, seeded with the search text. */
+  onCreate?: (name: string) => void;
 }) => {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const noun = field === "Vendor" ? "vendor" : "ledger";
+  const item = (value: string) => (
+    <CommandItem
+      key={value}
+      value={value}
+      onSelect={() => {
+        setOpen(false);
+        onPick(value);
+      }}
+    >
+      <span className="truncate">{value}</span>
+      {value === applied && (
+        <Check className="ml-auto h-4 w-4 text-primary" aria-hidden />
+      )}
+    </CommandItem>
+  );
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setQuery("");
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           variant="outline"
           size="sm"
-          className="whitespace-nowrap text-primary"
+          // Set on this selection: the button says to what, so several edits
+          // in a row can be read back off the bar before approving.
+          className={cn(
+            "max-w-[240px] whitespace-nowrap text-primary",
+            applied && "border-primary bg-accent"
+          )}
+          title={applied ? `${field}: ${applied}` : undefined}
         >
-          {field}
-          <ChevronDown className="h-4 w-4 opacity-70" aria-hidden />
+          {applied && <Check className="h-4 w-4 flex-none" aria-hidden />}
+          <span className="truncate">
+            {applied ? `${field} · ${applied}` : field}
+          </span>
+          <ChevronDown className="h-4 w-4 flex-none opacity-70" aria-hidden />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" side="top" className="w-64 p-0">
@@ -5677,24 +5769,43 @@ const BulkReassign = ({
           <CommandInput
             aria-label={`Search ${field}`}
             placeholder={`Search ${field.toLowerCase()}…`}
+            value={query}
+            onValueChange={setQuery}
           />
           <CommandList className="max-h-64">
             <CommandEmpty>
               No matching {field.toLowerCase()} found.
             </CommandEmpty>
-            {options.map((value) => (
-              <CommandItem
-                key={value}
-                value={value}
-                onSelect={() => {
+            {groups
+              ? groups.map((group) => (
+                  <CommandGroup key={group.heading} heading={group.heading}>
+                    {group.options.map(item)}
+                  </CommandGroup>
+                ))
+              : options.map(item)}
+          </CommandList>
+          {onCreate && (
+            // Outside the list so it is there whatever the search matches,
+            // including nothing — which is when it is most needed.
+            <div className="border-t border-neutral-gray p-1">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-primary hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+                onClick={() => {
                   setOpen(false);
-                  onPick(value);
+                  onCreate(query.trim());
+                  setQuery("");
                 }}
               >
-                {value}
-              </CommandItem>
-            ))}
-          </CommandList>
+                <Plus className="h-4 w-4 flex-none" aria-hidden />
+                <span className="truncate">
+                  {query.trim()
+                    ? `Create ${noun} “${query.trim()}”`
+                    : `Create ${noun}`}
+                </span>
+              </button>
+            </div>
+          )}
         </Command>
       </PopoverContent>
     </Popover>
