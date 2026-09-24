@@ -516,15 +516,3 @@ html {
 :root:not(.dark) {
   --destructive-foreground: 0 100% 34.7%;
 }
-
-/* Toasts clear the Inbox selection bar while it is up, instead of covering the
-   buttons a bulk approve's toast tells the user to use. The bar publishes
-   --inbox-bar-lift; with no bar it is unset and toasts sit where Sonner puts
-   them. */
-[data-sonner-toaster][data-y-position="bottom"] {
-  bottom: max(
-    var(--offset-bottom, 24px),
-    calc(var(--inbox-bar-lift, 0px) + 12px)
-  ) !important;
-}
-

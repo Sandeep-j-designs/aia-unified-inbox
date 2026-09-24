@@ -243,6 +243,58 @@ const tabs = ["All", "Need review", "Approved", "Duplicate"];
   upload panel is where a failure is reported and retried, and the table
   leaves Failed out of every tab, All included (24 Sep 2026).
 */
+/**
+ * Toast copy, written for the accountant clearing a queue: the count or the
+ * voucher first, then what happened, then what to do or where it goes next
+ * (Tally, the review form). Lower-case field names mid-sentence, Tally's own
+ * words (voucher, ledger, post, sync), no internal codes.
+ */
+/** A bulk field as it reads mid-sentence. */
+const FIELD_LABEL: Partial<Record<BulkField, string>> = {
+  "GST Registration": "GST registration",
+  "Voucher Type": "Voucher type",
+};
+const docs = (n: number) => `${n} document${n === 1 ? "" : "s"}`;
+/** "due date", "ledger and GST registration", "vendor, due date and ledger". */
+const fieldList = (fields: string[]) => {
+  const words = fields.map((f) => (/^GST/.test(f) ? f : f.toLowerCase()));
+  return words.length < 2
+    ? words.join("")
+    : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+};
+/**
+ * The store's reasons for refusing a row, said the way the toast reads them:
+ * "2 already approved", "1 duplicate of a posted voucher".
+ */
+const PLAIN_REASON: Record<string, string> = {
+  "Item unavailable": "no longer in this Inbox",
+  "No write access": "you don’t have posting access",
+  "Hard-block duplicate": "duplicate of a posted voucher",
+  "Not in Needs Review": "not waiting for review",
+  "Not editable": "already approved or still being read",
+  "Choose a value": "no value chosen",
+  "Invalid GST registration": "GST registration not set up for this company",
+  "Invalid voucher type": "voucher type not recognised",
+  "Invalid route": "voucher type not recognised",
+  "No ledger lines": "no line to set a ledger on",
+  "Approved record is read-only": "already approved, so kept on record",
+  "Already deleted": "already deleted",
+};
+const plainReason = (reason: string) =>
+  PLAIN_REASON[reason] ??
+  (reason.startsWith("No write access to ")
+    ? `you can’t post to ${reason.slice("No write access to ".length)}`
+    : reason.replace(/\.$/, "").replace(/^./, (c) => c.toLowerCase()));
+/** "2 missing ledger · 1 duplicate of a posted voucher", largest first. */
+const reasonBreakdown = (reasons: Iterable<string>) => {
+  const counts = new Map<string, number>();
+  for (const reason of reasons)
+    counts.set(reason, (counts.get(reason) || 0) + 1);
+  return [...counts]
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, count]) => `${count} ${reason}`)
+    .join(" · ");
+};
 const matchesTab = (item: Item, tab: string) => {
   if (tab === "All") return !["Deleted", "Failed"].includes(item.status);
   if (tab === "Duplicate") return item.status === "Duplicate";
@@ -717,36 +769,7 @@ export default function Workspace() {
     [pinned, setPinned] = useState(DEFAULT_PINNED),
     [widths, setWidths] = useState<Record<string, number>>({});
   const [resizing, setResizing] = useState<string | null>(null);
-  /**
-   * The selection bar floats over the bottom of the table, exactly where
-   * toasts appear, and a bulk approve's toast is the one most likely to arrive
-   * while the bar is up — over the very buttons it tells the user to use.
-   * The bar publishes how far its top edge sits above the viewport bottom,
-   * and globals.css lifts the toaster clear of it.
-   */
-  const selectionBar = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = selectionBar.current;
-    const root = document.documentElement;
-    if (!el || typeof ResizeObserver === "undefined") {
-      root.style.removeProperty("--inbox-bar-lift");
-      return;
-    }
-    const publish = () =>
-      root.style.setProperty(
-        "--inbox-bar-lift",
-        `${Math.round(window.innerHeight - el.getBoundingClientRect().top)}px`
-      );
-    publish();
-    const ro = new ResizeObserver(publish);
-    ro.observe(el);
-    window.addEventListener("resize", publish);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", publish);
-      root.style.removeProperty("--inbox-bar-lift");
-    };
-  }, [selected.length > 0]);
+
   /**
    * Bulk edits waiting to be written. Picking a value on the bar only stages
    * it; nothing on the rows changes until Save writes the staged values, or
@@ -854,6 +877,24 @@ export default function Workspace() {
       description: rest.length ? rest.join(" ") : undefined,
     });
   };
+  /**
+   * A bulk action's result. It lands bottom-right like every toast, which puts
+   * it over the selection bar's end, so it always shows its ×: the house toast
+   * reveals the close button on hover only, and a toast sitting on the bar's
+   * buttons has to be dismissable at a glance.
+   */
+  const bulkToast = (
+    kind: "success" | "warning" | "error",
+    title: string,
+    description?: string,
+    action?: { label: string; onClick: () => void }
+  ) =>
+    toast[kind](title, {
+      description,
+      duration: kind === "success" ? 5500 : 12000,
+      action,
+      classNames: { closeButton: "!opacity-100 !pointer-events-auto" },
+    });
   useEffect(() => {
     init();
     setReady(true);
@@ -1611,7 +1652,7 @@ export default function Workspace() {
       return;
     }
     notify(
-      `Approved ${getState().items.find((x) => x.id === item.id)?.form.voucherNo}.`
+      `${getState().items.find((x) => x.id === item.id)?.form.voucherNo || item.file.name} approved. Ready to sync to Tally.`
     );
     nextItem(true);
   };
@@ -1628,7 +1669,7 @@ export default function Workspace() {
     const changed =
       JSON.stringify(current.form) !== JSON.stringify(current.snapshot);
     if (!changed) {
-      notify("Nothing changed, so there is nothing to sync.");
+      notify("No changes made. Tally is already up to date.");
       return;
     }
     /*
@@ -1637,7 +1678,7 @@ export default function Workspace() {
       first run, and the cloud says so.
     */
     if (!sync.syncedIds.has(current.id)) {
-      notify("Saved.");
+      notify("Changes saved. They go to Tally with the next sync.");
       return;
     }
     if (!current.resyncNeeded) updatePosted(current.id, { resyncNeeded: true });
@@ -1647,7 +1688,10 @@ export default function Workspace() {
       document that had never been across.
     */
     sync.markForResync(current.id);
-    notify("Saved. Sync again to update Tally.", "warning");
+    notify(
+      "Changes saved. Sync again to update this voucher in Tally.",
+      "warning"
+    );
   };
   const edit = (patch: Partial<Form>) => {
     if (!item) return;
@@ -1772,14 +1816,16 @@ export default function Workspace() {
   const editTableField = (item: Item, field: BulkField, value: string) => {
     const result = applyBulkAction([item.id], field, value);
     if (!result.changed) {
+      const reason = Object.keys(result.reasons)[0];
       notify(
-        Object.keys(result.reasons).join(" · ") ||
-          "This voucher is posted. Use Edit entry to change it.",
+        reason
+          ? `${FIELD_LABEL[field] || field} not changed: ${plainReason(reason)}.`
+          : "This voucher is posted. Use Edit entry to change it.",
         "error"
       );
       return false;
     }
-    notify(`${field} updated.`);
+    notify(`${FIELD_LABEL[field] || field} changed to ${value}.`);
     return true;
   };
   /**
@@ -1792,16 +1838,19 @@ export default function Workspace() {
     if (error) {
       const current = getState().items.find((item) => item.id === x.id);
       const missing = current ? missingFields(current) : [];
+      // Title says which document, description says what to do about it.
       notify(
-        `${x.file.name} can’t be approved yet.\n${
-          missing.length ? `Missing ${missing.join(", ")}.` : error
+        `${x.file.name} not approved\n${
+          missing.length
+            ? `Add the ${fieldList(missing)}, then approve.`
+            : error
         }`,
         "error"
       );
       return;
     }
     notify(
-      `Approved ${getState().items.find((item) => item.id === x.id)?.form.voucherNo || x.file.name}.`
+      `${getState().items.find((item) => item.id === x.id)?.form.voucherNo || x.file.name} approved. Ready to sync to Tally.`
     );
   };
   const canEditTableItem = (item: Item) =>
@@ -1810,12 +1859,18 @@ export default function Workspace() {
     state.permissions.includes(item.route);
 
   const reportBulk = (verb: string, result: BulkResult) => {
+    const total = result.changed + result.skipped;
     const breakdown = Object.entries(result.reasons)
-      .map(([reason, count]) => `${reason}: ${count}`)
-      .join("; ");
+      .map(([reason, count]) => `${count} ${plainReason(reason)}`)
+      .join(" · ");
+    const done = verb.toLowerCase();
     notify(
-      `${verb} ${result.changed}. Skipped ${result.skipped}${breakdown ? ` — ${breakdown}.` : "."}`,
-      result.skipped ? "warning" : "success"
+      !result.skipped
+        ? `${docs(result.changed)} ${done}.`
+        : result.changed
+          ? `${result.changed} of ${total} ${done}\n${breakdown}.`
+          : `None of the ${total} ${done}\n${breakdown}.`,
+      !result.skipped ? "success" : result.changed ? "warning" : "error"
     );
     setSelected([]);
   };
@@ -1837,9 +1892,7 @@ export default function Workspace() {
       if (!value) continue;
       const result = applyBulkAction([id], field, value);
       if (result.skipped)
-        return (Object.keys(result.reasons)[0] || "Edit refused")
-          .replace(/\.$/, "")
-          .replace(/^./, (c) => c.toLowerCase());
+        return plainReason(Object.keys(result.reasons)[0] || "Edit refused");
     }
     return "";
   };
@@ -1859,17 +1912,19 @@ export default function Workspace() {
     setBulkStaged({});
     const saved = selected.length - refused.size;
     if (!refused.size) {
-      notify(`Saved changes to ${saved} document${saved === 1 ? "" : "s"}.`);
+      bulkToast(
+        "success",
+        `Changes saved to ${docs(saved)}.`,
+        "They stay in Needs Review until approved."
+      );
       return;
     }
-    const counts = new Map<string, number>();
-    for (const reason of refused.values())
-      counts.set(reason, (counts.get(reason) || 0) + 1);
-    notify(
-      `Saved ${saved} of ${selected.length}.\n${[...counts]
-        .map(([reason, count]) => `${count} ${reason}`)
-        .join(" · ")}`,
-      saved ? "warning" : "error"
+    bulkToast(
+      saved ? "warning" : "error",
+      saved
+        ? `Changes saved to ${saved} of ${selected.length}`
+        : `No changes saved`,
+      `${reasonBreakdown(refused.values())}.`
     );
   };
   const bulkApprove = () => {
@@ -1885,23 +1940,19 @@ export default function Workspace() {
         // this render's snapshot, so the staged edits just applied count.
         const current = getState().items.find((x) => x.id === id);
         const missing = current ? missingFields(current) : [];
-        const reason = Object.keys(result.reasons)[0];
         refused = missing.length
-          ? `missing ${missing.join(", ")}`
-          : reason === "Hard-block duplicate"
-            ? "match a voucher already posted"
-            : // The detail view's sentence, made to follow a count.
-              (reason || "Not approved")
-                .replace(/\.$/, "")
-                .replace(/^./, (c) => c.toLowerCase());
+          ? `missing ${fieldList(missing)}`
+          : plainReason(Object.keys(result.reasons)[0] || "Not approved");
       }
       held.set(id, refused);
     }
     setBulkStaged({});
     const approvedCount = selected.length - held.size;
     if (!held.size) {
-      notify(
-        `Approved ${approvedCount} document${approvedCount === 1 ? "" : "s"}.`
+      bulkToast(
+        "success",
+        `${docs(approvedCount)} approved.`,
+        "Ready to sync to Tally."
       );
       setSelected([]);
       return;
@@ -1914,25 +1965,15 @@ export default function Workspace() {
     */
     const heldIds = [...held.keys()];
     setSelected(heldIds);
-    const counts = new Map<string, number>();
-    for (const reason of held.values())
-      counts.set(reason, (counts.get(reason) || 0) + 1);
-    const breakdown = [...counts]
-      .sort((a, b) => b[1] - a[1])
-      .map(([reason, count]) => `${count} ${reason}`)
-      .join(" · ");
     const first = getState().items.find((x) => x.id === heldIds[0]);
-    toast[approvedCount ? "warning" : "error"](
+    bulkToast(
+      approvedCount ? "warning" : "error",
       approvedCount
-        ? `Approved ${approvedCount} of ${selected.length}. ${held.size} still selected.`
-        : `None of the ${selected.length} could be approved.`,
-      {
-        description: breakdown,
-        duration: 12000,
-        action: first
-          ? { label: "Review", onClick: () => open(first) }
-          : undefined,
-      }
+        ? `${approvedCount} of ${selected.length} approved. ${held.size} need${held.size === 1 ? "s" : ""} attention.`
+        : `None of the ${selected.length} approved`,
+      // What is wrong, then where to fix it: the held ones are still selected.
+      `${reasonBreakdown(held.values())}. Still selected, so you can fix them from the bar.`,
+      first ? { label: "Review", onClick: () => open(first) } : undefined
     );
   };
   /*
@@ -1997,18 +2038,24 @@ export default function Workspace() {
     const list = Array.from(incoming || []);
     if (!list.length || uploadLock.current) return;
     if (list.length > MAX_UPLOAD_FILES) {
-      notify(`Upload up to ${MAX_UPLOAD_FILES} files at once.`, "warning");
+      notify(
+        `Up to ${MAX_UPLOAD_FILES} files at a time. Choose fewer and upload again.`,
+        "warning"
+      );
       return;
     }
     if (intakeSource === "whatsapp" && !waRegistered) {
       notify(
-        "This phone number is not registered on an AI Accountant account. Register your number before sending documents.",
+        "This number isn’t registered with AI Accountant. Register it to send documents on WhatsApp.",
         "warning"
       );
       return;
     }
     if (!state.permissions.length) {
-      notify("You need posting access to upload. Ask an admin.", "error");
+      notify(
+        "You need posting access to upload documents. Ask your admin.",
+        "error"
+      );
       return;
     }
     void upload(list.slice(0, 1), intakeSource);
@@ -4386,14 +4433,13 @@ export default function Workspace() {
                 {selected.length > 0 && (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
                     <div
-                      ref={selectionBar}
                       role="toolbar"
                       aria-label="Selected document actions"
                       // One line, always. Staged values make the field buttons
                       // wider, and wrapping put Delete on a row of its own; the
                       // field buttons truncate their value instead, and only
                       // a window too narrow for even that scrolls sideways.
-                      className="pointer-events-auto flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto rounded-xl border border-primary/30 bg-background px-4 py-3 text-foreground shadow-xl [&>*]:shrink-0"
+                      className="pointer-events-auto flex max-w-full flex-nowrap items-center gap-1.5 overflow-x-auto rounded-xl border border-primary/30 bg-background px-3 py-3 text-foreground shadow-xl [&>*]:shrink-0"
                     >
                       <strong
                         className="whitespace-nowrap py-2 pr-1 text-sm font-semibold"
@@ -4476,7 +4522,7 @@ export default function Workspace() {
                           }));
                           setCreating(null);
                           notify(
-                            `${field === "Vendor" ? "Vendor" : "Ledger"} “${name}” created.`
+                            `${field === "Vendor" ? "Vendor" : "Ledger"} “${name}” created\nSave to set it on the selected documents.`
                           );
                           setBulkStaged((staged) => ({
                             ...staged,
@@ -4962,7 +5008,10 @@ export default function Workspace() {
                             "Forwarding address copied. Paste it into your email client."
                           );
                         } catch {
-                          notify("Could not copy the address.", "warning");
+                          notify(
+                            "Couldn’t copy the address. Select it and copy it manually.",
+                            "warning"
+                          );
                         }
                       }}
                     >
@@ -5933,9 +5982,10 @@ const RowActions = ({
  * posts as, the same as the table's dropdown.
  */
 /**
- * What a staged button calls its field. The value is the news once something
- * is staged, so the field name gives up the width; the full pair is in the
- * button's title.
+ * What the bar's buttons call their fields. Short in both states, so the bar
+ * fits beside a toast on a laptop screen, and a button does not change its
+ * name the moment something is staged; the search box and the title still
+ * give the full name.
  */
 const BULK_SHORT: Partial<Record<BulkField, string>> = {
   "GST Registration": "GST",
@@ -6021,7 +6071,7 @@ const BulkReassign = ({
           className={cn(
             // The one thing on the bar allowed to shrink: its value truncates
             // before anything wraps.
-            "min-w-[96px] max-w-[200px] !shrink whitespace-nowrap text-primary",
+            "min-w-[72px] max-w-[200px] !shrink whitespace-nowrap text-primary",
             staged && "border-primary bg-accent"
           )}
           title={staged ? `${field}: ${staged} — not saved yet` : undefined}
@@ -6036,7 +6086,7 @@ const BulkReassign = ({
               <span className="min-w-0 truncate">{staged}</span>
             </>
           ) : (
-            <span className="truncate">{field}</span>
+            <span className="truncate">{BULK_SHORT[field] || field}</span>
           )}
           <ChevronDown className="h-4 w-4 flex-none opacity-70" aria-hidden />
         </Button>
