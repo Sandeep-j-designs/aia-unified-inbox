@@ -238,12 +238,13 @@ const tabs = ["All", "Need review", "Approved", "Duplicate"];
   next to a queue of "retry", under a heading that named neither, and the count
   on the tab was the sum of two unrelated backlogs.
 
-  Failed is still a status — extraction can still fail, and those rows still
-  carry their own detail screen — it just no longer has a tab of its own; All
-  is where it is found.
+  Failed is still a status, but a failed upload is not a document in the
+  Inbox: nothing was read, so there is nothing to review, approve or post. The
+  upload panel is where a failure is reported and retried, and the table
+  leaves Failed out of every tab, All included (24 Sep 2026).
 */
 const matchesTab = (item: Item, tab: string) => {
-  if (tab === "All") return item.status !== "Deleted";
+  if (tab === "All") return !["Deleted", "Failed"].includes(item.status);
   if (tab === "Duplicate") return item.status === "Duplicate";
   if (tab === "Need review") return item.status === "Needs Review";
   return item.status === "Approved";
@@ -747,9 +748,10 @@ export default function Workspace() {
     };
   }, [selected.length > 0]);
   /**
-   * Bulk edits waiting for Approve. Picking a value on the bar only stages it;
-   * nothing on the rows changes until Approve applies the staged values and
-   * approves in the same step. Dropped when the selection is emptied.
+   * Bulk edits waiting to be written. Picking a value on the bar only stages
+   * it; nothing on the rows changes until Save writes the staged values, or
+   * Save & approve writes them and approves in the same step. Dropped when
+   * the selection is emptied.
    */
   const [bulkStaged, setBulkStaged] = useState<
     Partial<Record<BulkField, string>>
@@ -1579,7 +1581,7 @@ export default function Workspace() {
           x &&
           (reviewableOnly
             ? ["Needs Review", "Duplicate"].includes(x.status)
-            : x.status !== "Deleted")
+            : !["Deleted", "Failed"].includes(x.status))
       );
     void router.push(next ? detailHref(next.id) : "/inbox");
   };
@@ -1825,19 +1827,56 @@ export default function Workspace() {
    * refuses any staged edit is not approved: approving it would post values
    * the accountant did not choose. The toast counts it as skipped, with why.
    */
+  /**
+   * Write the staged edits to one row, in `BULK_APPLY_ORDER`. Returns why the
+   * row refused, or "" when every edit landed.
+   */
+  const applyStaged = (id: string) => {
+    for (const field of BULK_APPLY_ORDER) {
+      const value = bulkStaged[field];
+      if (!value) continue;
+      const result = applyBulkAction([id], field, value);
+      if (result.skipped)
+        return (Object.keys(result.reasons)[0] || "Edit refused")
+          .replace(/\.$/, "")
+          .replace(/^./, (c) => c.toLowerCase());
+    }
+    return "";
+  };
+  /**
+   * Save the staged edits without approving.
+   *
+   * For the accountant who has fixed what they can for now and will approve
+   * later, or wants someone else to. The rows stay selected and in Needs
+   * Review; only the staged values are written.
+   */
+  const bulkSave = () => {
+    const refused = new Map<string, string>();
+    for (const id of selected) {
+      const reason = applyStaged(id);
+      if (reason) refused.set(id, reason);
+    }
+    setBulkStaged({});
+    const saved = selected.length - refused.size;
+    if (!refused.size) {
+      notify(`Saved changes to ${saved} document${saved === 1 ? "" : "s"}.`);
+      return;
+    }
+    const counts = new Map<string, number>();
+    for (const reason of refused.values())
+      counts.set(reason, (counts.get(reason) || 0) + 1);
+    notify(
+      `Saved ${saved} of ${selected.length}.\n${[...counts]
+        .map(([reason, count]) => `${count} ${reason}`)
+        .join(" · ")}`,
+      saved ? "warning" : "error"
+    );
+  };
   const bulkApprove = () => {
-    const edits = BULK_APPLY_ORDER.filter((field) => bulkStaged[field]);
     /** Why each row that did not get approved did not, by document id. */
     const held = new Map<string, string>();
     for (const id of selected) {
-      let refused = "";
-      for (const field of edits) {
-        const result = applyBulkAction([id], field, bulkStaged[field]!);
-        if (result.skipped) {
-          refused = Object.keys(result.reasons)[0] || "Edit refused";
-          break;
-        }
-      }
+      let refused = applyStaged(id);
       if (!refused) {
         const result = applyBulkAction([id], "Approve");
         if (!result.skipped) continue;
@@ -1870,7 +1909,7 @@ export default function Workspace() {
     /*
       Partial approval. The complete documents are approved; the rest stay
       selected, so the bar is already pointed at exactly the documents that
-      need fixing: stage the missing value, Apply & approve again. The toast
+      need fixing: stage the missing value, Save & approve again. The toast
       says what each one lacks, grouped, and Review opens the first.
     */
     const heldIds = [...held.keys()];
@@ -4445,12 +4484,24 @@ export default function Workspace() {
                           }));
                         }}
                       />
+                      {/* Only once something is staged: with nothing to
+                          write, Save would be a button that does nothing. */}
+                      {Object.keys(bulkStaged).length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="whitespace-nowrap text-primary"
+                          onClick={bulkSave}
+                        >
+                          Save
+                        </Button>
+                      )}
                       <Button size="sm" onClick={bulkApprove}>
                         <Check className="h-4 w-4" />
                         {/* Says when it will also write the staged edits, so
                             the bar never changes rows the user did not expect. */}
                         {Object.keys(bulkStaged).length
-                          ? "Apply & approve"
+                          ? "Save & approve"
                           : "Approve"}
                       </Button>
                       <BulkButton
@@ -5928,7 +5979,7 @@ const BulkReassign = ({
   options: string[];
   /** Lay the options out under headings, as the Voucher type cell does. */
   groups?: { heading: string; options: readonly string[] }[];
-  /** The value waiting for Approve, if any. */
+  /** The value waiting for Save or Save & approve, if any. */
   staged?: string;
   onPick: (value: string) => void;
   /** Offer "Create …" at the foot of the list, seeded with the search text. */
@@ -5973,9 +6024,7 @@ const BulkReassign = ({
             "min-w-[96px] max-w-[200px] !shrink whitespace-nowrap text-primary",
             staged && "border-primary bg-accent"
           )}
-          title={
-            staged ? `${field}: ${staged} — applied on Approve` : undefined
-          }
+          title={staged ? `${field}: ${staged} — not saved yet` : undefined}
         >
           {/* No check here: the filled border already says "staged", and
               the 24px it took is what the value needs at narrow widths. */}

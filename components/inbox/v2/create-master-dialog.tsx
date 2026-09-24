@@ -57,7 +57,8 @@ type Props = {
 
 /**
  * Create a ledger or a vendor from the bulk-edit bar, and stage it for the
- * selection. Like every bulk edit, it is written to the rows on Approve.
+ * selection. Like every bulk edit, it is written to the rows on Save or
+ * Save & approve.
  *
  * A vendor is a ledger too, filed under Sundry Creditors, so both are one
  * dialog. It asks only what the new master cannot be made without. Anything
@@ -122,7 +123,7 @@ const CreateMasterDialog = ({
             </DialogTitle>
             <DialogDescription>
               It is added to your books, and set on the selected documents when
-              you approve them.
+              you save.
             </DialogDescription>
           </DialogHeader>
 
