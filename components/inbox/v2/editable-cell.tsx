@@ -10,6 +10,7 @@ import {
   CommandInput,
   CommandList,
   CommandEmpty,
+  CommandGroup,
   CommandItem,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ export default function EditableCell({
   label,
   value,
   options,
+  groups,
   editable,
   onChange,
   open,
@@ -28,6 +30,11 @@ export default function EditableCell({
   label: string;
   value: string;
   options: readonly string[];
+  /**
+   * Show the options under headings instead of as one list. `options` is
+   * still what the cell accepts; the groups only lay the list out.
+   */
+  groups?: { heading: string; options: readonly string[] }[];
   editable: boolean;
   onChange: (value: string) => boolean;
   open: boolean;
@@ -47,6 +54,19 @@ export default function EditableCell({
       </div>
     );
   const choices = [...new Set([value, ...options].filter(Boolean))];
+  const renderChoice = (choice: string) => (
+    <CommandItem
+      key={choice}
+      value={choice}
+      title={choice}
+      className="h-7 cursor-pointer rounded-md px-2 py-1 text-sm leading-5 tracking-[-0.16px]"
+      onSelect={() => {
+        if (choice === value || onChange(choice)) onOpenChange(false);
+      }}
+    >
+      <span className="truncate">{choice}</span>
+    </CommandItem>
+  );
   return (
     <div
       className="min-w-0"
@@ -114,20 +134,17 @@ export default function EditableCell({
               <CommandEmpty className="px-2 py-4 text-xs text-secondary-foreground">
                 No matching options.
               </CommandEmpty>
-              {choices.map((choice) => (
-                <CommandItem
-                  key={choice}
-                  value={choice}
-                  title={choice}
-                  className="h-7 cursor-pointer rounded-md px-2 py-1 text-sm leading-5 tracking-[-0.16px]"
-                  onSelect={() => {
-                    if (choice === value || onChange(choice))
-                      onOpenChange(false);
-                  }}
-                >
-                  <span className="truncate">{choice}</span>
-                </CommandItem>
-              ))}
+              {groups
+                ? groups.map((group) => (
+                    <CommandGroup
+                      key={group.heading}
+                      heading={group.heading}
+                      className="p-0 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-0 [&_[cmdk-group-heading]]:text-caption-1 [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-secondary-foreground"
+                    >
+                      {group.options.map(renderChoice)}
+                    </CommandGroup>
+                  ))
+                : choices.map(renderChoice)}
             </CommandList>
           </Command>
         </PopoverContent>

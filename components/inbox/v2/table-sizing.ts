@@ -4,10 +4,10 @@ export const COLUMN_SIZES: Record<
   { min: number; preferred: number; max: number }
 > = {
   File: { min: 180, preferred: 240, max: 600 },
-  Source: { min: 180, preferred: 230, max: 420 },
+  Source: { min: 110, preferred: 120, max: 200 },
+  User: { min: 150, preferred: 200, max: 360 },
   Vendor: { min: 120, preferred: 160, max: 360 },
   "Voucher type": { min: 140, preferred: 150, max: 240 },
-  "AI Route": { min: 155, preferred: 170, max: 260 },
   "GST Registration": { min: 150, preferred: 180, max: 360 },
   Amount: { min: 120, preferred: 130, max: 220 },
   Received: { min: 168, preferred: 190, max: 280 },

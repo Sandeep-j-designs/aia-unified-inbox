@@ -504,8 +504,8 @@ export const REGISTERED_WHATSAPP = "+91 98450 12342";
 const WHATSAPP_SENDERS = [
   `${REGISTERED_WHATSAPP} (Priya R.)`,
   "+91 99001 XXX17 (Ramesh K.)",
-  "+91 97411 XXX08 (Accounts, Shakun)",
-  "+91 90080 XXX63",
+  "+91 97411 XXX08 (Divya S.)",
+  "+91 90080 XXX63 (Arjun M.)",
 ];
 
 /**
@@ -537,24 +537,22 @@ function withWhatsAppBacklog(base: State, company: string): State {
     .slice(0, WHATSAPP_BACKLOG);
   const keep = new Set(picked.map((item) => item.id));
   const now = Date.now();
-  const arrivals = picked.map(
-    (item, index): Item => ({
-      ...item,
-      source: "whatsapp",
-      sender: WHATSAPP_SENDERS[index % WHATSAPP_SENDERS.length],
-      subject: "—",
-      // Newest first, spread over the last three days. The ones still being
-      // read are the newest: they arrived minutes ago.
-      received: new Date(
-        now - (index < 4 ? (index + 1) * 4 * 60_000 : index * 3.8 * 3_600_000)
-      ).toISOString(),
-      // Slow enough that the welcome dialog opens while they are still being
-      // read, and counts them down as they finish.
-      ...(["Received", "Extracting"].includes(item.status)
-        ? { extractionDelay: 9000 + index * 3500 }
-        : {}),
-    })
-  );
+  const arrivals = picked.map((item, index): Item => ({
+    ...item,
+    source: "whatsapp",
+    sender: WHATSAPP_SENDERS[index % WHATSAPP_SENDERS.length],
+    subject: "—",
+    // Newest first, spread over the last three days. The ones still being
+    // read are the newest: they arrived minutes ago.
+    received: new Date(
+      now - (index < 4 ? (index + 1) * 4 * 60_000 : index * 3.8 * 3_600_000)
+    ).toISOString(),
+    // Slow enough that the welcome dialog opens while they are still being
+    // read, and counts them down as they finish.
+    ...(["Received", "Extracting"].includes(item.status)
+      ? { extractionDelay: 9000 + index * 3500 }
+      : {}),
+  }));
   const replaced = new Map(arrivals.map((item) => [item.id, item]));
   return {
     ...base,
@@ -1384,8 +1382,7 @@ export function demoUploadDocuments(
   from?: Pick<Item, "source" | "sender">
 ): Item[] {
   const templates = seed().items.filter(
-    (item) =>
-      item.company === company && seedable(item) && !item.priorVoucher
+    (item) => item.company === company && seedable(item) && !item.priorVoucher
   );
   return Array.from({ length: count }, (_, index) => {
     const template = structuredClone(templates[index % templates.length]);
@@ -1523,15 +1520,54 @@ export function applyScenario(scenario: Scenario) {
     .forEach((x) => scheduleExtraction(x.id));
 }
 
-export const BULK_VOUCHER_TYPES = [
-  "Purchase",
-  "Journal",
-  "Debit Note",
-  "Credit Note",
-  "Receipt",
-  "Payment",
-  "Contra",
-] as const;
+/**
+ * The voucher types, grouped by the voucher they post as.
+ *
+ * The Voucher type dropdown is also where the route is chosen: the table no
+ * longer carries a separate AI Route column. Picking a type from another group
+ * moves the document to that group's route, through the same `setRoute` a
+ * reassignment always used. Payment and Receipt sit with the purchase and sales
+ * sides they settle, and Contra, a transfer between cash and bank, is
+ * journal-like.
+ */
+export const VOUCHER_GROUPS: {
+  route: Route;
+  label: string;
+  types: string[];
+}[] = [
+  {
+    route: "AP",
+    label: "Purchase",
+    types: ["Purchase", "Debit Note", "Payment"],
+  },
+  { route: "AR", label: "Sales", types: ["Sales", "Credit Note", "Receipt"] },
+  { route: "JV", label: "Journal", types: ["Journal", "Contra"] },
+];
+export const BULK_VOUCHER_TYPES: readonly string[] = VOUCHER_GROUPS.flatMap(
+  (group) => group.types
+);
+export const ROUTE_BY_VOUCHER_TYPE: Record<string, Route> = Object.fromEntries(
+  VOUCHER_GROUPS.flatMap((group) =>
+    group.types.map((type) => [type, group.route])
+  )
+);
+
+/**
+ * Who sent a document in, for the User column.
+ *
+ * Uploads carry the uploader's name. WhatsApp carries the number with the
+ * registered user's name in brackets, and the column shows the name. Email
+ * shows the sending address, because a forwarded mail has no user behind it
+ * that the Inbox can know.
+ *
+ * DEV: prototype-only parsing. Production should return the user on the item
+ * (`sentBy`) instead of it being read out of `sender`.
+ */
+export const senderUser = (item: Pick<Item, "source" | "sender">): string => {
+  if (item.source === "whatsapp")
+    return item.sender.match(/\(([^)]+)\)\s*$/)?.[1] || item.sender;
+  return item.sender;
+};
 export type BulkField =
   "Vendor" | "GST Registration" | "Voucher Type" | "Ledger" | "Route";
 
@@ -1630,6 +1666,28 @@ export function applyBulkAction(
         skip("Invalid voucher type");
         continue;
       }
+      if (action === "Voucher Type") {
+        // A type from another group moves the document to that group's route
+        // first, so the voucher type and the route can never disagree.
+        const nextRoute = ROUTE_BY_VOUCHER_TYPE[nextValue];
+        if (nextRoute !== item.route) {
+          if (!state.permissions.includes(nextRoute)) {
+            skip(`No write access to ${routeNames[nextRoute]}`);
+            continue;
+          }
+          setRoute(id, nextRoute);
+        }
+        const current = state.items.find((x) => x.id === id) || item;
+        update(id, {
+          form: { ...structuredClone(current.form), voucherType: nextValue },
+          amount: current.amount,
+          sheet: undefined,
+          firstAttempt: false,
+          edited: [...new Set([...current.edited, action])],
+        });
+        result.changed++;
+        continue;
+      }
       if (action === "Route") {
         const nextRoute = ROUTE_BY_LABEL[nextValue];
         if (!nextRoute) {
@@ -1671,7 +1729,6 @@ export function applyBulkAction(
         const form = structuredClone(item.form);
         if (action === "Vendor") form.party = nextValue;
         if (action === "GST Registration") form.gst = nextValue;
-        if (action === "Voucher Type") form.voucherType = nextValue;
         if (action === "Ledger")
           form.lines = form.lines.map((line) => ({
             ...line,

@@ -149,6 +149,8 @@ import {
   actor,
   applyBulkAction,
   BULK_VOUCHER_TYPES,
+  senderUser,
+  VOUCHER_GROUPS,
   type BulkField,
   type BulkResult,
   approve,
@@ -282,16 +284,21 @@ const EMPTY_STATES: Record<string, { title: string; body: string }> = {
     body: "A document that matches one you already have waits here until you keep it or discard it.",
   },
 };
+/**
+ * The default order, set on 24 Sep 2026: what the document is
+ * (File, Vendor, Voucher type, GST Registration, Amount), then where it stands
+ * (Status), then where it came from (Source, User, Received).
+ */
 const columns = [
   "File",
-  "Source",
   "Vendor",
   "Voucher type",
-  "AI Route",
   "GST Registration",
   "Amount",
-  "Received",
   "Status",
+  "Source",
+  "User",
+  "Received",
 ];
 const sourceLabels = { email: "Email", whatsapp: "WhatsApp", upload: "Upload" };
 
@@ -323,7 +330,7 @@ const sourceLabels = { email: "Email", whatsapp: "WhatsApp", upload: "Upload" };
  * label and the reverse lookup has to agree with this one.
  */
 const aiRouteLabels = ROUTE_LABELS;
-const columnVisibilityKey = `inbox.columns.v3:${encodeURIComponent(actor)}`;
+const columnVisibilityKey = `inbox.columns.v5:${encodeURIComponent(actor)}`;
 const defaultColumns = (companyId: string) =>
   columns.filter(
     (c) =>
@@ -336,20 +343,17 @@ const RESIZABLE = new Set(columns);
  * Pinning is what locks a column. A pinned column holds the front of the grid
  * and cannot be dragged while pinned.
  *
- * File and Status are pinned permanently, not by default: File identifies the
- * row at all, and Status is what the accountant reads to decide whether to
- * open it, so a queue missing either is a queue that cannot be worked. They
- * carry a padlock rather than a pin toggle and their visibility checkbox is
- * fixed on — the arrangement is the user's everywhere else, but these two are
- * what the screen is, and a layout that can be arranged into uselessness is a
- * layout with a trap in it.
+ * File is pinned permanently, not by default: it identifies the row at all,
+ * so it carries a padlock rather than a pin toggle and its visibility checkbox
+ * is fixed on. The arrangement is the user's everywhere else.
  *
- * Pinning Status also settles the problem the column widths were tuned around:
- * it can no longer be the column pushed off the right edge, because it is no
- * longer on the right.
+ * Status was locked beside File until 24 Sep 2026, when the default order
+ * moved it after Amount. A locked column is pinned to the front, so Status is
+ * now an ordinary column: it sits where the order puts it, and can be pinned,
+ * moved or hidden like the rest.
  */
-const LOCKED_COLUMNS = new Set(["File", "Status"]);
-/** The locked pair leads the grid, in the order `columns` declares them. */
+const LOCKED_COLUMNS = new Set(["File"]);
+/** The locked column leads the grid. */
 const DEFAULT_PINNED = columns.filter((c) => LOCKED_COLUMNS.has(c));
 /**
  * Motion for the Columns list. One duration and one curve for the rows sliding
@@ -414,14 +418,12 @@ const cellValue = (x: Item, column: string): string | number => {
       return x.file.name;
     case "Source":
       return x.source;
+    case "User":
+      return senderUser(x);
     case "Vendor":
       return x.form.party;
     case "Voucher type":
       return x.form.voucherType;
-    // The route as it stands, not the AI's original pick: the column is a
-    // dropdown, so filtering and sorting have to answer for what it shows.
-    case "AI Route":
-      return aiRouteLabels[x.route];
     case "GST Registration":
       return x.form.gst;
     case "Amount":
@@ -443,12 +445,12 @@ const cellValue = (x: Item, column: string): string | number => {
  * bar, the panel and the column-header funnel can never disagree about what is
  * applied.
  */
-const QUICK_FILTERS = ["Source", "AI Route"] as const;
+const QUICK_FILTERS = ["Source", "Voucher type"] as const;
 const FILTERABLE = new Set([
   "Source",
+  "User",
   "Vendor",
   "Voucher type",
-  "AI Route",
   "GST Registration",
   "Status",
 ]);
@@ -817,7 +819,7 @@ export default function Workspace() {
           setVisibilityByCompany(valid);
         }
       }
-      const pn = sessionStorage.getItem("inbox.pinned.v2");
+      const pn = sessionStorage.getItem("inbox.pinned.v4");
       /*
         The locked pair is re-asserted over whatever was stored, and leads it.
 
@@ -836,7 +838,7 @@ export default function Workspace() {
           : []),
       ];
       setPinned(storedPins);
-      const od = sessionStorage.getItem("inbox.order.v2");
+      const od = sessionStorage.getItem("inbox.order.v4");
       // Reconciled against the current column list rather than trusted: a
       // session stored before a column existed would otherwise drop it from the
       // table for good, since the order is what the grid renders from. Read
@@ -847,7 +849,7 @@ export default function Workspace() {
       );
       // Store only finite, bounded manual widths. Missing columns use defaults.
       if (ws) setWidths(readWidths(JSON.parse(ws)));
-      const fs = sessionStorage.getItem("inbox.filters.v2");
+      const fs = sessionStorage.getItem("inbox.filters.v3");
       if (fs) {
         const v = JSON.parse(fs);
         // The stored shape changed when filters became multi-select; merging
@@ -881,15 +883,15 @@ export default function Workspace() {
         columnVisibilityKey,
         JSON.stringify(visibilityByCompany)
       );
-      sessionStorage.setItem("inbox.order.v2", JSON.stringify(order));
-      sessionStorage.setItem("inbox.pinned.v2", JSON.stringify(pinned));
+      sessionStorage.setItem("inbox.order.v4", JSON.stringify(order));
+      sessionStorage.setItem("inbox.pinned.v4", JSON.stringify(pinned));
       if (!resizing)
         sessionStorage.setItem(
           `inbox.widths.v4:${encodeURIComponent(actor)}`,
           JSON.stringify(widths)
         );
       sessionStorage.setItem(
-        "inbox.filters.v2",
+        "inbox.filters.v3",
         JSON.stringify({ filters, tab })
       );
     }
@@ -1402,6 +1404,14 @@ export default function Workspace() {
   const routeLabelOptions = routes
     .filter((r) => state.permissions.includes(r))
     .map((r) => ROUTE_LABELS[r]);
+  /**
+   * The Voucher type dropdown, grouped by the voucher each type posts as.
+   * Groups for a route this role cannot write to are left out, for the same
+   * reason as the route options above.
+   */
+  const voucherTypeGroups = VOUCHER_GROUPS.filter((group) =>
+    state.permissions.includes(group.route)
+  ).map((group) => ({ heading: group.label, options: group.types }));
 
   /**
    * What each reassignable field can be set to.
@@ -3869,34 +3879,26 @@ export default function Workspace() {
                                       </div>
                                     </div>
                                   ) : c === "Source" ? (
-                                    <div className="min-w-0 space-y-1">
-                                      <div
-                                        className="flex min-w-0 items-center gap-1.5"
-                                        title={`${sourceLabels[x.source]}${x.sender ? ` · ${x.sender}` : ""}`}
-                                      >
-                                        <span className="flex-none text-secondary-foreground">
-                                          {sourceLabels[x.source]}
-                                        </span>
-                                        <span className="min-w-0 truncate">
-                                          {x.sender || "—"}
-                                        </span>
-                                      </div>
-                                      {x.source === "email" && (
-                                        <p
-                                          className="truncate text-caption-1 font-medium text-secondary-foreground"
-                                          title={`→ ${x.routingAddress}`}
-                                        >
-                                          → {x.routingAddress}
-                                        </p>
-                                      )}
-                                    </div>
+                                    // Only the channel. Which inbox address a
+                                    // mail was sent to is the company's own,
+                                    // so it said nothing, and who sent it is
+                                    // the User column's job.
+                                    <span className="truncate">
+                                      {sourceLabels[x.source]}
+                                    </span>
+                                  ) : c === "User" ? (
+                                    <span
+                                      className="block truncate"
+                                      title={x.sender}
+                                    >
+                                      {senderUser(x) || "—"}
+                                    </span>
                                   ) : ["Received", "Extracting"].includes(
                                       x.status
                                     ) &&
                                     [
                                       "Vendor",
                                       "Voucher type",
-                                      "AI Route",
                                       "GST Registration",
                                       "Amount",
                                     ].includes(c) ? (
@@ -3947,32 +3949,10 @@ export default function Workspace() {
                                       }
                                       value={x.form.voucherType}
                                       options={BULK_VOUCHER_TYPES}
+                                      groups={voucherTypeGroups}
                                       editable={canEditTableItem(x)}
                                       onChange={(value) =>
                                         editTableField(x, "Voucher Type", value)
-                                      }
-                                    />
-                                  ) : c === "AI Route" ? (
-                                    // A pill read as a verdict the queue had
-                                    // already reached. The route is the one
-                                    // decision on the row the accountant is
-                                    // most likely to disagree with, so it
-                                    // carries the same dropdown as the rest of
-                                    // the editable columns.
-                                    <EditableCell
-                                      onClosed={grid.refocusGrid}
-                                      label="AI route"
-                                      open={activeCell === `${x.id}:route`}
-                                      onOpenChange={(open) =>
-                                        setActiveCell(
-                                          open ? `${x.id}:route` : null
-                                        )
-                                      }
-                                      value={aiRouteLabels[x.route]}
-                                      options={routeLabelOptions}
-                                      editable={canEditTableItem(x)}
-                                      onChange={(value) =>
-                                        editTableField(x, "Route", value)
                                       }
                                     />
                                   ) : c === "GST Registration" ? (
