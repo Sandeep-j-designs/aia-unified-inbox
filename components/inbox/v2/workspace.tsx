@@ -1332,10 +1332,6 @@ export default function Workspace() {
     rowSelected
       ? sticky && "bg-accent"
       : cn(sticky && "bg-background", "hover:bg-accent");
-  /** The last pinned column carries Bloocks' heavier divider. */
-  const lastPinned = Object.keys(stickyLeft).at(-1);
-  const PINNED_EDGE =
-    "!border-r-2 !border-r-[hsl(var(--palette-neutral-300-hsl))]";
   const tableWidth =
     SELECT_WIDTH +
     ACTIONS_WIDTH +
@@ -3914,7 +3910,6 @@ export default function Workspace() {
                               className={cn(
                                 "relative h-10 whitespace-nowrap px-3 py-0 align-middle",
                                 c in stickyLeft && "sticky z-10 bg-accent",
-                                c === lastPinned && PINNED_EDGE,
                                 T.head,
                                 grid.isCursor(-1, shown.indexOf(c)) &&
                                   "ring-2 ring-inset ring-primary"
@@ -4148,7 +4143,6 @@ export default function Workspace() {
                                     selected.includes(x.id),
                                     c in stickyLeft
                                   ),
-                                  c === lastPinned && PINNED_EDGE,
                                   T.cell,
                                   // Range first, cursor second: the cursor sits
                                   // inside its own selection and has to win.
