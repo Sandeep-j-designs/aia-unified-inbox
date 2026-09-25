@@ -79,7 +79,6 @@ import {
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Kbd } from "@/components/ui/kbd";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -1367,6 +1366,31 @@ export default function Workspace() {
   const all = kickstartPreview
     ? []
     : state.items.filter((x) => x.company === state.company && !x.priorVoucher);
+  /*
+    Documents still being read arrive as a toast, not a banner over the queue:
+    it says so once when a batch lands and then gets out of the way, like every
+    other notice here. It fires when the count goes up (a new upload, or
+    opening the queue with some already in progress), not as it counts down,
+    because each document turning up in the table says the rest.
+  */
+  const preparing = all.filter((x) =>
+    ["Received", "Extracting"].includes(x.status)
+  ).length;
+  const preparingBefore = useRef(0);
+  useEffect(() => {
+    if (!moduleRoute && preparing > preparingBefore.current)
+      toast.info(
+        `Preparing ${preparing} document${preparing === 1 ? "" : "s"}`,
+        {
+          description:
+            preparing === 1
+              ? "It appears here for review as soon as it is ready."
+              : "Each one appears here for review as soon as it is ready.",
+          duration: 5500,
+        }
+      );
+    preparingBefore.current = preparing;
+  }, [preparing, moduleRoute]);
   /*
     The welcome dialog: once per company, on its first visit to the Inbox.
 
@@ -3286,25 +3310,6 @@ export default function Workspace() {
                         setDialog("upload");
                       }}
                     />
-                    {!moduleRoute &&
-                      all.some((item) =>
-                        ["Received", "Extracting"].includes(item.status)
-                      ) && (
-                        <div
-                          role="status"
-                          className="mx-6 mb-3 flex items-center gap-2 rounded-md border border-neutral-gray bg-accent/40 px-3 py-2 text-sm text-secondary-foreground"
-                        >
-                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                          AI Accountant is preparing{" "}
-                          {
-                            all.filter((item) =>
-                              ["Received", "Extracting"].includes(item.status)
-                            ).length
-                          }{" "}
-                          documents. Each one appears automatically when it is
-                          ready for review.
-                        </div>
-                      )}
                     {!moduleRoute && (
                       <Tabs
                         value={tab}
@@ -3532,46 +3537,60 @@ export default function Workspace() {
                         }}
                       >
                         <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            // Neutral outline: it names a panel rather than
-                            // performing an action, so it does not take the
-                            // brand (Figma 24156:151930).
-                            className="h-9"
+                          {/* The Bloocks ColumnCustomizer trigger: a 26px chip
+                              that turns blue while any column is hidden, so a
+                              table missing columns says so from the toolbar. */}
+                          <button
+                            type="button"
+                            aria-label="Customize columns"
+                            className={cn(
+                              "inline-flex items-center gap-2 rounded-lg border bg-background px-3 py-1 text-label-3 font-medium transition-[border-color,background-color] duration-150 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              order.some((c) => !visible.includes(c))
+                                ? "border-popover-border bg-accent text-primary"
+                                : "border-border text-foreground hover:border-[hsl(var(--palette-neutral-300-hsl))] hover:bg-neutral-gray"
+                            )}
                           >
-                            <Columns3 className="h-4 w-4" />
+                            <Columns3 className="size-3.5" aria-hidden />
                             Columns
-                          </Button>
+                          </button>
                         </PopoverTrigger>
                         <PopoverContent
                           align="end"
-                          className="w-[340px] p-0"
+                          className="w-[300px] p-0"
                           // The grid behind the popover is the preview, so a drag
                           // that leaves the panel must not read as "dismiss".
                           onPointerDownOutside={(e) =>
                             dragging && e.preventDefault()
                           }
                         >
-                          <div className="space-y-2.5 px-3 pb-2.5 pt-3">
-                            <p className="text-sm font-semibold text-foreground">
-                              Columns
-                            </p>
-                            <div className="relative">
-                              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-secondary-foreground" />
-                              <Input
-                                ref={columnSearchRef}
-                                aria-label="Search columns"
-                                placeholder="Search…"
-                                className="h-9 pl-8 pr-10"
-                                value={columnSearch}
-                                onChange={(e) =>
-                                  setColumnSearch(e.target.value)
-                                }
-                              />
-                              <Kbd className="absolute right-2 top-1/2 -translate-y-1/2">
-                                /
-                              </Kbd>
-                            </div>
+                          {/* Bloocks panel search, without the panel's
+                              "Columns" title: the trigger already names it. */}
+                          <div className="flex items-center gap-2 border-b border-neutral-gray px-4 py-2">
+                            <Search
+                              className="size-4 flex-none text-secondary-foreground"
+                              aria-hidden
+                            />
+                            <input
+                              ref={columnSearchRef}
+                              aria-label="Search columns"
+                              placeholder="Search…"
+                              className="w-full min-w-0 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-secondary-foreground"
+                              value={columnSearch}
+                              onChange={(e) => setColumnSearch(e.target.value)}
+                            />
+                            {columnSearch && (
+                              <button
+                                type="button"
+                                aria-label="Clear search"
+                                onClick={() => {
+                                  setColumnSearch("");
+                                  columnSearchRef.current?.focus();
+                                }}
+                                className="flex-none text-secondary-foreground hover:text-foreground"
+                              >
+                                <X className="size-4" aria-hidden />
+                              </button>
+                            )}
                           </div>
                           {/*
                         The list holds every column, hidden ones included: the
@@ -3581,7 +3600,7 @@ export default function Workspace() {
                       */}
                           <div
                             ref={columnList}
-                            className="max-h-[330px] overflow-y-auto border-y border-neutral-gray py-1"
+                            className="max-h-[320px] overflow-y-auto px-2.5 py-1 [scrollbar-color:hsl(var(--popover-border))_transparent] [scrollbar-width:thin]"
                           >
                             {columnMatches.length === 0 ? (
                               <p className={cn(T.sub, "px-3 py-8 text-center")}>
@@ -3617,19 +3636,19 @@ export default function Workspace() {
                                         : undefined,
                                     }}
                                     className={cn(
-                                      "relative flex items-center gap-2.5 px-3 py-2",
-                                      isDragged
-                                        ? // Lifted off the list: opaque, so the rows
-                                          // sliding under it stay hidden, and above
-                                          // them in the stacking order.
-                                          "z-10 rounded-md bg-background shadow-lg ring-1 ring-neutral-gray"
-                                        : !drag && "hover:bg-accent/60"
+                                      // Bloocks: 32px rows, the pin revealed on hover.
+                                      "group/row relative flex h-8 items-center gap-2 rounded-md px-1",
+                                      isDragged &&
+                                        // Lifted off the list: opaque, so the rows
+                                        // sliding under it stay hidden, and above
+                                        // them in the stacking order.
+                                        "z-10 bg-background shadow-lg ring-1 ring-neutral-gray"
                                     )}
                                   >
                                     {locked || filteringColumns ? (
                                       // Holds the grip's place so every label starts
                                       // on the same x, draggable row or not.
-                                      <span className="h-4 w-4 flex-none" />
+                                      <span className="size-5 flex-none" />
                                     ) : (
                                       <button
                                         type="button"
@@ -3654,9 +3673,9 @@ export default function Workspace() {
                                               (e.key === "ArrowDown" ? 1 : -1)
                                           );
                                         }}
-                                        className="flex-none cursor-grab touch-none rounded text-secondary-foreground hover:text-foreground active:cursor-grabbing"
+                                        className="inline-flex size-5 flex-none cursor-grab touch-none items-center justify-center rounded-md text-secondary-foreground hover:text-foreground active:cursor-grabbing"
                                       >
-                                        <GripVertical className="h-4 w-4" />
+                                        <GripVertical className="size-3" />
                                       </button>
                                     )}
                                     {fixed ? (
@@ -3665,10 +3684,10 @@ export default function Workspace() {
                                       // in the checkbox's place, not a checkbox
                                       // that is ticked and cannot be unticked.
                                       <span
-                                        className="flex h-4 w-4 flex-none items-center justify-center text-secondary-foreground"
+                                        className="flex size-3 flex-none items-center justify-center text-secondary-foreground"
                                         title={`${c} is always shown`}
                                       >
-                                        <Lock className="h-4 w-4" aria-hidden />
+                                        <Lock className="size-3" aria-hidden />
                                         <span className="sr-only">
                                           {c} is locked
                                         </span>
@@ -3683,18 +3702,15 @@ export default function Workspace() {
                                         onCheckedChange={(next) =>
                                           toggleColumn(c, !!next)
                                         }
+                                        // Bloocks sm checkbox: 12px, 4px corners.
+                                        className="size-3 rounded-[4px] [&_svg]:size-2.5"
                                       />
                                     )}
                                     <Label
                                       htmlFor={`col-${c}`}
                                       className={cn(
-                                        "flex-1 truncate text-sm font-normal",
-                                        locked
-                                          ? "text-foreground"
-                                          : "cursor-pointer",
-                                        !locked &&
-                                          !checked &&
-                                          "text-secondary-foreground"
+                                        "flex-1 truncate text-label-2 font-normal text-foreground",
+                                        !locked && "cursor-pointer"
                                       )}
                                     >
                                       {c}
@@ -3713,16 +3729,16 @@ export default function Workspace() {
                                             : "Pin — moves the column to the front"
                                         }
                                         className={cn(
-                                          "flex-none rounded p-0.5",
+                                          "inline-flex size-5 flex-none items-center justify-center rounded-md transition-opacity duration-150 hover:bg-neutral-gray focus-visible:opacity-100",
                                           locked
                                             ? "text-primary"
-                                            : "text-secondary-foreground hover:text-foreground"
+                                            : "text-secondary-foreground opacity-0 hover:text-foreground group-hover/row:opacity-100"
                                         )}
                                       >
                                         {locked ? (
-                                          <PinOff className="h-4 w-4" />
+                                          <PinOff className="size-3" />
                                         ) : (
-                                          <Pin className="h-4 w-4" />
+                                          <Pin className="size-3" />
                                         )}
                                       </button>
                                     }
@@ -3731,23 +3747,25 @@ export default function Workspace() {
                               })
                             )}
                           </div>
-                          <div className="flex items-center px-1.5 py-1.5">
-                            <Button
-                              variant="ghost"
-                              className="flex-1"
-                              onClick={resetWidths}
-                            >
-                              <RotateCcw className="h-4 w-4" />
-                              Reset widths
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              className="flex-1"
-                              onClick={resetColumns}
-                            >
-                              <RotateCcw className="h-4 w-4" />
-                              Reset Default
-                            </Button>
+                          {/* Bloocks' footer, in neutral rather than its red:
+                              a reset is an undo, and red is kept for deletes. */}
+                          <div className="flex items-start gap-2.5 border-t border-neutral-gray px-4 pb-3 pt-2">
+                            {(
+                              [
+                                ["Reset Width", resetWidths],
+                                ["Reset Default", resetColumns],
+                              ] as const
+                            ).map(([label, onClick]) => (
+                              <button
+                                key={label}
+                                type="button"
+                                onClick={onClick}
+                                className="flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-md p-1 text-label-2 font-medium text-secondary-foreground hover:bg-neutral-gray hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                <Undo2 className="size-3" aria-hidden />
+                                {label}
+                              </button>
+                            ))}
                           </div>
                         </PopoverContent>
                       </Popover>
