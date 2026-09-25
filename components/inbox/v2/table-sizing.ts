@@ -1,14 +1,21 @@
-/** Automatic layouts adapt; manual layouts retain exact CSS-pixel widths. */
+/**
+ * Automatic layouts adapt; manual layouts retain exact CSS-pixel widths.
+ *
+ * `min` is the floor for both, and no column may go below the width its header
+ * needs to show in full: 12px left padding + label + 4px gap and 20px for each
+ * sort/filter button + 8px right padding, plus a few px of slack for font
+ * rendering. A header that truncates hides the name of what the column holds.
+ */
 export const COLUMN_SIZES: Record<
   string,
   { min: number; preferred: number; max: number }
 > = {
   File: { min: 180, preferred: 240, max: 600 },
-  Source: { min: 110, preferred: 120, max: 200 },
+  Source: { min: 116, preferred: 120, max: 200 },
   User: { min: 150, preferred: 200, max: 360 },
   Vendor: { min: 120, preferred: 160, max: 360 },
-  "Voucher type": { min: 140, preferred: 150, max: 240 },
-  "GST Registration": { min: 150, preferred: 180, max: 360 },
+  "Voucher type": { min: 152, preferred: 160, max: 240 },
+  "GST Registration": { min: 172, preferred: 180, max: 360 },
   Amount: { min: 120, preferred: 130, max: 220 },
   Received: { min: 168, preferred: 190, max: 280 },
   Status: { min: 140, preferred: 150, max: 220 },
