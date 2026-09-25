@@ -265,7 +265,7 @@ export default function InboxKickstart({
                 <p>
                   {
                     [
-                      "Bills, invoices and journals come together in your inbox.",
+                      "Bills, invoices and expenses come together in your inbox.",
                       "Reading vendor, GST and totals. Mapping your Tally ledgers.",
                       "Review your entry before anything is posted to Tally.",
                     ][step]
