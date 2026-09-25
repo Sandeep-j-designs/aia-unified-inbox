@@ -200,6 +200,9 @@
     --muted-foreground: var(--palette-neutral-500-hsl);
     --popover: var(--palette-neutral-0-hsl);
     --popover-foreground: var(--palette-neutral-900-hsl);
+    /* Bloocks --color-popover-border: the blue-200 hairline around every
+       dropdown, so a floating panel reads as the brand's surface, not a grey box. */
+    --popover-border: var(--palette-blue-200-hsl);
     --card: var(--palette-neutral-0-hsl);
     --card-foreground: var(--palette-neutral-900-hsl);
     --border: var(--palette-neutral-200-hsl);
@@ -320,6 +323,7 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
+    --popover-border: var(--palette-blue-800-hsl);
     --primary: 210 40% 98%;
     --primary-foreground: 222.2 47.4% 11.2%;
     --secondary: 217.2 32.6% 17.5%;

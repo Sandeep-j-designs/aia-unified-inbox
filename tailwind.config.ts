@@ -114,6 +114,7 @@ const config = {
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
+          border: "hsl(var(--popover-border))",
         },
         warning: {
           DEFAULT: "hsl(var(--warning-background))",
