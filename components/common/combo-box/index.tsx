@@ -10,7 +10,10 @@ import { ChevronDown, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
 import { Button } from "../../ui/button";
 import { cn } from "@/lib/utils";
-import ComboBoxPanel from "./panel";
+import ComboBoxPanel, {
+  COMBO_BOX_POPOVER_CLASS,
+  type ComboBoxSize,
+} from "./panel";
 import RenderTriggerContent from "./trigger-content";
 import type { ComboBoxOption, ComboBoxOptionGroup } from "@/types/components";
 
@@ -48,6 +51,8 @@ interface ComboBoxProps<TValue> {
   modal?: boolean;
   formatTriggerLabel?: (label: string | ReactNode) => ReactNode;
   optionActions?: (option: ComboBoxOption<TValue>) => ReactNode;
+  /** PROTOTYPE: `sm` for a ComboBox inside a table cell. See ComboBoxSize. */
+  size?: ComboBoxSize;
 }
 
 function ComboBoxInner<TValue extends string | number>(
@@ -68,6 +73,7 @@ function ComboBoxInner<TValue extends string | number>(
     disabled,
     disableIcon,
     singleTriggerContentClassName,
+    size,
     emptyDataText,
     dataTestId,
     actionLabel,
@@ -203,7 +209,8 @@ function ComboBoxInner<TValue extends string | number>(
 
       <PopoverContent
         className={cn(
-          "w-[var(--radix-popover-trigger-width)] min-w-[200px] overflow-hidden p-0 shadow-md",
+          "w-[var(--radix-popover-trigger-width)] min-w-[200px]",
+          COMBO_BOX_POPOVER_CLASS,
           wrapperClassName
         )}
         align="start"
@@ -234,6 +241,7 @@ function ComboBoxInner<TValue extends string | number>(
           onClearAll={() => onChange([])}
           optionActions={optionActions}
           dataTestId={dataTestId}
+          size={size}
         />
       </PopoverContent>
     </Popover>

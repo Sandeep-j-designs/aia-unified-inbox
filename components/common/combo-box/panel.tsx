@@ -22,6 +22,17 @@ import type { ComboBoxOption, ComboBoxOptionGroup } from "@/types/components";
  * one list in the app. Styled to the Bloocks Combobox:
  * https://ajaymon12.github.io/Bloocks-Design-system/?path=/docs/components-combobox--docs
  */
+/**
+ * `md` is the Bloocks Combobox (16/24 options), for form fields. `sm` uses the
+ * Bloocks menu row (14/20 in 36px) for pickers opened from a table cell, where
+ * the md list comes out a size larger than the cell that opened it.
+ */
+export type ComboBoxSize = "md" | "sm";
+
+/** The popover around the panel: Bloocks rounds the Combobox panel at 12px. */
+export const COMBO_BOX_POPOVER_CLASS =
+  "overflow-hidden rounded-xl p-0 shadow-md";
+
 export type ComboBoxPanelProps<TValue extends string | number> = {
   title: string;
   options: ComboBoxOption<TValue>[];
@@ -42,6 +53,7 @@ export type ComboBoxPanelProps<TValue extends string | number> = {
   onClearAll?: () => void;
   optionActions?: (option: ComboBoxOption<TValue>) => ReactNode;
   dataTestId?: string;
+  size?: ComboBoxSize;
 };
 
 const labelText = <TValue,>(option: ComboBoxOption<TValue>) =>
@@ -65,6 +77,7 @@ const ComboBoxPanel = <TValue extends string | number>({
   onClearAll,
   optionActions,
   dataTestId,
+  size = "md",
 }: ComboBoxPanelProps<TValue>) => {
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
@@ -139,6 +152,7 @@ const ComboBoxPanel = <TValue extends string | number>({
             optionGroups={visibleGroups}
             options={visibleOptions}
             selectedValues={selectedValues}
+            size={size}
             title={title}
           />
         )}

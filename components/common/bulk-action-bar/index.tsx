@@ -13,7 +13,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import ComboBoxPanel from "@/components/common/combo-box/panel";
+import ComboBoxPanel, {
+  COMBO_BOX_POPOVER_CLASS,
+} from "@/components/common/combo-box/panel";
 import { cn } from "@/lib/utils";
 import type { ComboBoxOption, ComboBoxOptionGroup } from "@/types/components";
 
@@ -192,7 +194,7 @@ const FieldPicker = ({
       <PopoverContent
         align="start"
         side="top"
-        className="w-[260px] overflow-hidden p-0 shadow-md"
+        className={cn("w-[260px]", COMBO_BOX_POPOVER_CLASS)}
       >
         <ComboBoxPanel
           title={field.label}

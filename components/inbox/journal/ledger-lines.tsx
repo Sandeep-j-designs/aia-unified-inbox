@@ -171,6 +171,7 @@ const LedgerLines = ({
                   <TableCell className={BODY_CELL}>
                     <ComboBox
                       title="Select ledger"
+                      size="sm"
                       searchPlaceholder="Search ledgers…"
                       isMultiSelect={false}
                       hideClearButton

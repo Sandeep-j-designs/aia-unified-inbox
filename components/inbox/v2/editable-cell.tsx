@@ -5,7 +5,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import ComboBoxPanel from "@/components/common/combo-box/panel";
+import ComboBoxPanel, {
+  COMBO_BOX_POPOVER_CLASS,
+} from "@/components/common/combo-box/panel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -104,7 +106,10 @@ export default function EditableCell({
         <PopoverContent
           align="start"
           sideOffset={4}
-          className="w-[280px] max-w-[calc(100vw-24px)] overflow-hidden p-0 shadow-md"
+          className={cn(
+            "w-[240px] max-w-[calc(100vw-24px)]",
+            COMBO_BOX_POPOVER_CLASS
+          )}
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
           onCloseAutoFocus={(event) => {
@@ -117,6 +122,7 @@ export default function EditableCell({
         >
           <ComboBoxPanel
             title={label}
+            size="sm"
             searchPlaceholder={`Search ${label.toLowerCase()}…`}
             options={choices.map(toOption)}
             optionGroups={groups?.map((group) => ({

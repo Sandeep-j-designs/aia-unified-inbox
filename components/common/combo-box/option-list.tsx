@@ -7,6 +7,7 @@ import OptionIcon from "./option-icon";
 import OptionLabel from "./option-label";
 import SingleSelectIcon from "./single-select-icon";
 import type { ComboBoxOption, ComboBoxOptionGroup } from "@/types/components";
+import type { ComboBoxSize } from "./panel";
 
 type Props<TValue extends string | number> = {
   isMultiSelect: boolean;
@@ -16,6 +17,7 @@ type Props<TValue extends string | number> = {
   optionGroups?: ComboBoxOptionGroup<TValue>[];
   options: ComboBoxOption<TValue>[];
   selectedValues: TValue[];
+  size?: ComboBoxSize;
   title: string;
 };
 
@@ -27,6 +29,7 @@ const ComboBoxOptionItem = <TValue extends string | number>({
   onSelect,
   option,
   optionActions,
+  size = "md",
   title,
 }: {
   index: number;
@@ -36,13 +39,16 @@ const ComboBoxOptionItem = <TValue extends string | number>({
   onSelect: (option: ComboBoxOption<TValue>) => void;
   option: ComboBoxOption<TValue>;
   optionActions?: (option: ComboBoxOption<TValue>) => ReactNode;
+  size?: ComboBoxSize;
   title: string;
 }) => {
   const titleId = title.toLowerCase().replace(/\s+/g, "-");
   const item = (
     <CommandItem
-      // Bloocks Combobox row: 36px, a neutral tint under the cursor, and the
-      // selected row in the brand's subtle fill with a check.
+      // Bloocks Combobox row: 16/24 in a 40px row (md), or the Bloocks menu
+      // row, 14/20 in 36px (sm), for pickers opened from a table cell. A
+      // neutral tint under the cursor, the selected row in the brand's subtle
+      // fill with a ticked circle.
       value={String(option.value)}
       data-testid={`${titleId}-option-${index.toString().replace(/\s+/g, "-")}`}
       className={cn(
@@ -60,7 +66,7 @@ const ComboBoxOptionItem = <TValue extends string | number>({
     >
       <MultiSelectIcon isMultiSelect={isMultiSelect} isSelected={isSelected} />
       <OptionIcon icon={option.icon} isSelected={isSelected} />
-      <OptionLabel label={option.label} isSelected={isSelected} />
+      <OptionLabel label={option.label} isSelected={isSelected} size={size} />
 
       <SingleSelectIcon isMultiSelect={isMultiSelect} isSelected={isSelected} />
       {optionActions ? (
@@ -96,6 +102,7 @@ const ComboBoxOptionList = <TValue extends string | number>({
   optionGroups,
   options,
   selectedValues,
+  size,
   title,
 }: Props<TValue>) => {
   const renderOption = (option: ComboBoxOption<TValue>, index: number) => (
@@ -108,6 +115,7 @@ const ComboBoxOptionList = <TValue extends string | number>({
       onSelect={onSelect}
       option={option}
       optionActions={optionActions}
+      size={size}
       title={title}
     />
   );
@@ -121,7 +129,9 @@ const ComboBoxOptionList = <TValue extends string | number>({
           <CommandGroup
             key={groupIndex}
             heading={group.label}
-            className="p-0 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-caption-1 [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-secondary-foreground"
+            // Headings at 12/16 so they read as labels, not footnotes; every
+            // group after the first gets a hairline so the sets stay apart.
+            className="p-0 [&:not(:first-child)]:mt-1 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-neutral-gray [&:not(:first-child)]:pt-1 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-label-3 [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-secondary-foreground"
           >
             {group.options.map((option) => renderOption(option, optionIndex++))}
           </CommandGroup>
