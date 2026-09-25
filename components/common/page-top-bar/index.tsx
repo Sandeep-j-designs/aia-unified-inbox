@@ -48,28 +48,28 @@ const QuickActions = ({
       {leadingActions}
 
       {onSync ? (
-        <Button variant="outline" size="sm" onClick={onSync}>
+        <Button variant="outline" onClick={onSync}>
           <SyncIcon className={cn("h-4 w-4", isSyncing && "animate-spin")} />
           Sync
         </Button>
       ) : null}
 
       {showExportButton ? (
-        <Button variant="outline" size="sm" onClick={onExport}>
+        <Button variant="outline" onClick={onExport}>
           <ExportIcon className="h-4 w-4" />
           Export
         </Button>
       ) : null}
 
       {secondaryButtonText ? (
-        <Button variant="outline" size="sm" onClick={onSecondaryButtonClick}>
+        <Button variant="outline" onClick={onSecondaryButtonClick}>
           {SecondaryIcon ? <SecondaryIcon className="h-4 w-4" /> : null}
           {secondaryButtonText}
         </Button>
       ) : null}
 
       {primaryText ? (
-        <Button size="sm" onClick={onPrimaryButtonClick}>
+        <Button onClick={onPrimaryButtonClick}>
           {PrimaryIcon ? <PrimaryIcon className="h-4 w-4" /> : null}
           {primaryText}
         </Button>

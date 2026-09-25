@@ -2,16 +2,10 @@ import React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import Typography from "@/components/common/typography";
 import RupeeInput from "@/components/common/rupee-input";
+import { ComboBox } from "@/components/common/combo-box";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -52,7 +46,8 @@ const HEAD_CELL = cn(
 
 const BODY_ROW = "border-b border-neutral-gray hover:bg-transparent";
 
-const BODY_CELL = "h-[75px] border-r border-neutral-gray px-[10px] py-3 align-middle";
+const BODY_CELL =
+  "h-[75px] border-r border-neutral-gray px-[10px] py-3 align-middle";
 
 /**
  * Column widths, narrowed from the Journals page's.
@@ -92,7 +87,28 @@ type Props = {
   onAmountChange: (index: number, side: "dr" | "cr", value: number) => void;
   onAddLine: () => void;
   onRemoveLine: (index: number) => void;
+  /** Ledgers created this session; listed under "New" ahead of the masters. */
+  createdLedgers?: string[];
+  /**
+   * "+ Create ledger" in the picker. Hands over the search text and the line
+   * it came from; the caller opens the create dialog and assigns the result.
+   */
+  onCreateLedger?: (query: string, index: number) => void;
 };
+
+/**
+ * The masters grouped as Tally groups them. A real chart of accounts runs to
+ * hundreds, so the picker searches rather than scrolls.
+ */
+const LEDGER_GROUPS = [...new Set(LEDGERS.map((l) => l.group))].map(
+  (group) => ({
+    label: group,
+    options: LEDGERS.filter((l) => l.group === group).map((l) => ({
+      label: l.name,
+      value: l.name,
+    })),
+  })
+);
 
 const LedgerLines = ({
   lines,
@@ -103,6 +119,8 @@ const LedgerLines = ({
   onAmountChange,
   onAddLine,
   onRemoveLine,
+  createdLedgers = [],
+  onCreateLedger,
 }: Props) => {
   const errorAt = (index: number, kind: "amount" | "ledger") =>
     errors.some((e) => e.index === index && e.kind === kind);
@@ -117,7 +135,9 @@ const LedgerLines = ({
           edge, so a rule above it would draw a line the AP items table does not
           have either. */}
       <div className="overflow-x-auto border border-t-0 border-neutral-gray">
-        <Table className={cn("w-full table-fixed border-collapse", TABLE_FLOOR)}>
+        <Table
+          className={cn("w-full table-fixed border-collapse", TABLE_FLOOR)}
+        >
           <TableHeader>
             <TableRow className={HEAD_ROW}>
               <TableHead className={cn(HEAD_CELL, COL.ledger)}>
@@ -149,37 +169,74 @@ const LedgerLines = ({
               return (
                 <TableRow key={index} className={BODY_ROW}>
                   <TableCell className={BODY_CELL}>
-                    <Select
-                      value={line.ledger || undefined}
+                    <ComboBox
+                      title="Select ledger"
+                      searchPlaceholder="Search ledgers…"
+                      isMultiSelect={false}
+                      hideClearButton
+                      modal={false}
                       disabled={readOnly}
-                      onValueChange={(value) =>
-                        onLineChange(index, { ledger: value })
+                      invalid={ledgerError}
+                      selectedValue={line.ledger}
+                      // Every name the list can hold, so the trigger can show
+                      // a created or extracted ledger that is not a master.
+                      options={[
+                        ...new Set(
+                          [
+                            line.ledger,
+                            ...createdLedgers,
+                            ...LEDGERS.map((l) => l.name),
+                          ].filter(Boolean)
+                        ),
+                      ].map((name) => ({ label: name, value: name }))}
+                      optionGroups={[
+                        ...(createdLedgers.length
+                          ? [
+                              {
+                                label: "New",
+                                options: createdLedgers.map((name) => ({
+                                  label: name,
+                                  value: name,
+                                })),
+                              },
+                            ]
+                          : []),
+                        // An extracted ledger that is not a master yet still
+                        // has to be findable, or the trigger names a value the
+                        // list cannot show.
+                        ...(line.ledger &&
+                        !createdLedgers.includes(line.ledger) &&
+                        !LEDGERS.some((l) => l.name === line.ledger)
+                          ? [
+                              {
+                                label: "From the document",
+                                options: [
+                                  { label: line.ledger, value: line.ledger },
+                                ],
+                              },
+                            ]
+                          : []),
+                        ...LEDGER_GROUPS,
+                      ]}
+                      wrapperClassName="min-w-[280px]"
+                      triggerClassName="text-sm"
+                      onChange={(value) =>
+                        onLineChange(index, { ledger: String(value) })
                       }
-                    >
-                      <SelectTrigger
-                        aria-label="Ledger account"
-                        className={cn(
-                          ledgerError &&
-                            "border-destructive-foreground focus:ring-0"
-                        )}
-                      >
-                        <SelectValue placeholder="Select Ledger" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[
-                          ...new Set(
-                            [
-                              line.ledger,
-                              ...LEDGERS.map((l) => l.name),
-                            ].filter(Boolean)
-                          ),
-                        ].map((name) => (
-                          <SelectItem key={name} value={name}>
-                            {name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      actionLabel={
+                        onCreateLedger
+                          ? (query) =>
+                              query
+                                ? `Create ledger “${query}”`
+                                : "Create ledger"
+                          : undefined
+                      }
+                      onAction={
+                        onCreateLedger
+                          ? (query) => onCreateLedger(query, index)
+                          : undefined
+                      }
+                    />
                     {ledgerError ? (
                       <Typography
                         variant="sm"
@@ -251,15 +308,15 @@ const LedgerLines = ({
                   </TableCell>
 
                   {!readOnly ? (
-                    // px-0 and a 32px button: under `table-fixed` this column
+                    // px-0 and the 32px icon-sm button: under `table-fixed` this column
                     // is held at 44px, and the cell's usual 10px of side
                     // padding would leave a 40px control 24px to sit in.
                     <TableCell className={cn(BODY_CELL, "border-r-0 px-0")}>
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="icon-sm"
                         aria-label="Remove line"
-                        className="mx-auto h-8 w-8"
+                        className="mx-auto"
                         onClick={() => onRemoveLine(index)}
                       >
                         <Trash2 className="h-4 w-4 text-secondary-foreground" />
@@ -274,7 +331,7 @@ const LedgerLines = ({
       </div>
 
       {!readOnly ? (
-        <Button variant="ghost" size="sm" className="mt-3" onClick={onAddLine}>
+        <Button variant="secondary" className="mt-3" onClick={onAddLine}>
           <Plus className="h-4 w-4" />
           Add Ledger Line
         </Button>

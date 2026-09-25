@@ -42,6 +42,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { format, parseISO } from "date-fns";
+import FilterChip from "@/components/common/filter-chip";
+import DateFilter from "@/components/common/date-filter";
 import { T } from "./ui";
 import { actor, routeNames, type Item, type Route } from "./store";
 
@@ -143,35 +146,46 @@ type Column = {
   cell: (item: Item) => React.ReactNode;
 };
 
-/** One of the register's three filter dropdowns. */
+/**
+ * One of the register's filter dropdowns, on a Bloocks FilterChip trigger —
+ * the same chip as the Inbox's filter bar, so a filter reads "Vendor: Dell"
+ * once set and its × clears it in place.
+ */
 const FilterMenu = ({
   label,
-  active,
+  value,
+  onClear,
   children,
 }: {
   label: string;
-  active: boolean;
+  /** What is applied, as the chip should say it; empty when nothing is. */
+  value: string;
+  onClear: () => void;
   children: React.ReactNode;
 }) => (
   <Popover>
     <PopoverTrigger asChild>
-      <Button
-        variant="outline"
-        size="sm"
-        className={cn(
-          "h-9 flex-none whitespace-nowrap font-normal",
-          active ? "border-primary text-primary" : "text-secondary-foreground"
-        )}
-      >
-        {label}
-        <ChevronDown className="h-4 w-4 opacity-70" aria-hidden />
-      </Button>
+      <FilterChip label={label} value={value} onClearButtonClick={onClear} />
     </PopoverTrigger>
     <PopoverContent align="start" className="w-64 p-2">
       {children}
     </PopoverContent>
   </Popover>
 );
+
+/** "₹1,000 – ₹5,000", "≥ ₹1,000", "≤ ₹5,000" for the amount chip. */
+const amountRange = (min: string, max: string) => {
+  const rupees = (v: string) =>
+    new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 0,
+    }).format(Number(v));
+  if (min && max) return `${rupees(min)} – ${rupees(max)}`;
+  if (min) return `≥ ${rupees(min)}`;
+  if (max) return `≤ ${rupees(max)}`;
+  return "";
+};
 
 const RangeField = ({
   label,
@@ -454,11 +468,7 @@ const Register = ({
           here, and saying so is better than a button that quietly does
           something adjacent.
         */}
-        <Button
-          variant="outline"
-          className="text-primary"
-          onClick={() => onUnbuilt(copy.create)}
-        >
+        <Button variant="secondary" onClick={() => onUnbuilt(copy.create)}>
           <Plus className="h-4 w-4" />
           {copy.create}
         </Button>
@@ -518,7 +528,14 @@ const Register = ({
         */}
         {!journal && (
           <>
-            <FilterMenu label={copy.party} active={!!filters.party}>
+            <FilterMenu
+              label={copy.party}
+              value={filters.party}
+              onClear={() => {
+                onFilterChange("party", "");
+                setPage(0);
+              }}
+            >
               <div className="max-h-64 overflow-y-auto">
                 {parties.map((name) => (
                   <button
@@ -546,34 +563,26 @@ const Register = ({
                 )}
               </div>
             </FilterMenu>
-            <FilterMenu
+            <DateFilter
               label={copy.dateLabel}
-              active={!!filters.from || !!filters.to}
-            >
-              <div className="space-y-3">
-                <RangeField
-                  label="From"
-                  type="date"
-                  value={filters.from}
-                  onChange={(v) => {
-                    onFilterChange("from", v);
-                    setPage(0);
-                  }}
-                />
-                <RangeField
-                  label="To"
-                  type="date"
-                  value={filters.to}
-                  onChange={(v) => {
-                    onFilterChange("to", v);
-                    setPage(0);
-                  }}
-                />
-              </div>
-            </FilterMenu>
+              value={{
+                from: filters.from ? parseISO(filters.from) : undefined,
+                to: filters.to ? parseISO(filters.to) : undefined,
+              }}
+              onChange={({ from, to }) => {
+                onFilterChange("from", from ? format(from, "yyyy-MM-dd") : "");
+                onFilterChange("to", to ? format(to, "yyyy-MM-dd") : "");
+                setPage(0);
+              }}
+            />
             <FilterMenu
               label="Total Amount"
-              active={!!filters.min || !!filters.max}
+              value={amountRange(filters.min, filters.max)}
+              onClear={() => {
+                onFilterChange("min", "");
+                onFilterChange("max", "");
+                setPage(0);
+              }}
             >
               <div className="space-y-3">
                 <RangeField
@@ -603,8 +612,7 @@ const Register = ({
         {!journal && (
           <Button
             variant="ghost"
-            size="sm"
-            className="whitespace-nowrap text-secondary-foreground"
+            className="whitespace-nowrap"
             onClick={() => {
               onResetFilters();
               onSearchChange("");
@@ -617,8 +625,7 @@ const Register = ({
         )}
         <Button
           variant="outline"
-          size="sm"
-          className="whitespace-nowrap text-primary"
+          className="h-9 whitespace-nowrap"
           onClick={() => onUnbuilt("Choosing columns")}
         >
           <Columns3 className="h-4 w-4" />
@@ -697,8 +704,7 @@ const Register = ({
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
+                        size="icon-sm"
                         aria-label={`Actions for ${item.form.voucherNo || item.file.name}`}
                       >
                         <MoreVertical className="h-4 w-4" />
@@ -767,7 +773,6 @@ const Register = ({
         </span>
         <Button
           variant="ghost"
-          size="sm"
           disabled={page === 0}
           onClick={() => setPage((p) => Math.max(0, p - 1))}
         >
@@ -775,7 +780,6 @@ const Register = ({
         </Button>
         <Button
           variant="ghost"
-          size="sm"
           disabled={end >= rows.length}
           onClick={() => setPage((p) => p + 1)}
         >

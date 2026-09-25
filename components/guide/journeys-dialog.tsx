@@ -172,9 +172,8 @@ const JourneysDialog = ({
                   </p>
                 </div>
                 <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-auto w-full justify-center gap-1 text-primary"
+                  variant="secondary"
+                  className="mt-auto w-full"
                   disabled={!scripted}
                   // A journey with no script in this prototype says so on the
                   // control rather than by vanishing from the grid.

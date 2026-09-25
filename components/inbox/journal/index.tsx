@@ -45,9 +45,23 @@ type Props = {
   attempted: boolean;
   readOnly?: boolean;
   onEdit: (patch: Partial<Form>) => void;
+  /** Ledgers created this session, offered in every line's picker. */
+  createdLedgers?: string[];
+  /**
+   * The picker's "+ Create ledger". The caller runs the create dialog and
+   * calls `assign` with the new name, which sets it on the line it came from.
+   */
+  onCreateLedger?: (query: string, assign: (name: string) => void) => void;
 };
 
-const JournalVoucher = ({ item, attempted, readOnly, onEdit }: Props) => {
+const JournalVoucher = ({
+  item,
+  attempted,
+  readOnly,
+  onEdit,
+  createdLedgers,
+  onCreateLedger,
+}: Props) => {
   const savedForm = readOnly ? item.snapshot || item.form : item.form;
   const form = readOnly
     ? savedForm
@@ -187,6 +201,15 @@ const JournalVoucher = ({ item, attempted, readOnly, onEdit }: Props) => {
         onAmountChange={setAmount}
         onAddLine={addLine}
         onRemoveLine={removeLine}
+        createdLedgers={createdLedgers}
+        onCreateLedger={
+          onCreateLedger
+            ? (query, index) =>
+                onCreateLedger(query, (name) =>
+                  setLine(index, { ledger: name })
+                )
+            : undefined
+        }
       />
 
       {/* The note and the figures close the form together, as in the frame:

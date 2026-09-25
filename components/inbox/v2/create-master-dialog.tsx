@@ -53,12 +53,14 @@ type Props = {
   existing: string[];
   onClose: () => void;
   onCreate: (name: string) => void;
+  /** What happens to the new master, in the words of the place that asked. */
+  description?: string;
 };
 
 /**
- * Create a ledger or a vendor from the bulk-edit bar, and stage it for the
- * selection. Like every bulk edit, it is written to the rows on Save or
- * Save & approve.
+ * Create a ledger or a vendor from any picker's "+ Create" row — the bulk-edit
+ * bar, a journal line, a table cell. The caller says what happens next through
+ * `description`; from the bar it is staged and written on Save.
  *
  * A vendor is a ledger too, filed under Sundry Creditors, so both are one
  * dialog. It asks only what the new master cannot be made without. Anything
@@ -75,6 +77,7 @@ const CreateMasterDialog = ({
   existing,
   onClose,
   onCreate,
+  description = "It is added to your books, and set on the selected documents when you save.",
 }: Props) => {
   const [name, setName] = useState("");
   const [group, setGroup] = useState(LEDGER_GROUPS[0]);
@@ -119,12 +122,9 @@ const CreateMasterDialog = ({
         <form onSubmit={submit} noValidate className="space-y-5">
           <DialogHeader>
             <DialogTitle>
-              {kind === "vendor" ? "Create vendor" : "New ledger"}
+              {kind === "vendor" ? "Create vendor" : "Create ledger"}
             </DialogTitle>
-            <DialogDescription>
-              It is added to your books, and set on the selected documents when
-              you save.
-            </DialogDescription>
+            <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-1.5">

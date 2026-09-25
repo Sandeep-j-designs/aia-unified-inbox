@@ -168,14 +168,10 @@ const SyncConfirmModal = ({
         </div>
 
         <div className="flex justify-end gap-2 border-t border-neutral-gray px-5 py-3.5">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button size="sm" onClick={onConfirm} disabled={selectedCount === 0}>
+          <Button onClick={onConfirm} disabled={selectedCount === 0}>
             {/* Offline, the action is not a push — it is a promise to push. */}
             {isOffline ? "Add to Sync Queue" : "Sync to Tally"}
           </Button>

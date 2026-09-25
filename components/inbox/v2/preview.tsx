@@ -103,7 +103,7 @@ export default function Preview({ item }: { item: Item }) {
               <div className="space-y-3">
                 <h3 className={T.section}>{item.file.name}</h3>
                 <p className={T.value}>Spreadsheet original preserved.</p>
-                <Button asChild variant="outline" className="text-primary">
+                <Button asChild variant="outline">
                   <a href={url} download={item.file.name}>
                     Download original
                   </a>
@@ -205,11 +205,11 @@ const ViewerAction = ({
 }) => (
   <Button
     variant="ghost"
-    size="icon"
+    size="icon-sm"
     aria-label={label}
     title={label}
     onClick={onClick}
-    className="h-8 w-8 shrink-0 text-secondary-foreground hover:bg-accent hover:text-foreground [&_svg]:size-[18px]"
+    className="shrink-0 text-secondary-foreground hover:bg-accent hover:text-foreground [&_svg]:size-[18px]"
   >
     {children}
   </Button>

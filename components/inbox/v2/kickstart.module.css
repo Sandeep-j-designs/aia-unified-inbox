@@ -575,8 +575,9 @@
   padding: 8px 12px;
   gap: 8px;
   border-radius: 6px;
-  font-size: 12.5px;
-  line-height: 18px;
+  /* Bloocks md label: 14/20. */
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 500;
 }
 .uploadButton {
@@ -833,7 +834,7 @@
   min-height: 36px;
   padding: 0;
   color: var(--palette-blue-700);
-  font-size: 13px;
+  font-size: 14px;
 }
 .readingNote {
   white-space: nowrap;
@@ -842,8 +843,10 @@
 }
 .reviewButton {
   gap: 8px;
-  min-height: 40px;
-  padding: 10px 16px;
+  /* Bloocks md: 36px tall, 12px sides — the same size as every other
+     primary, so the card's one filled button wins on colour, not size. */
+  min-height: 36px;
+  padding: 8px 12px;
   background: var(--blue);
   color: #fff;
   font-weight: 500;
@@ -1278,8 +1281,8 @@
   border-color: var(--palette-blue-100);
 }
 .uploadButton {
-  min-height: 42px;
-  border-radius: 8px;
+  min-height: 36px;
+  border-radius: 6px;
   background: linear-gradient(100deg, var(--palette-blue-400), var(--palette-blue-300));
   box-shadow: 0 4px 9px color-mix(in srgb, var(--palette-blue-400) 15%, transparent);
 }
@@ -1289,8 +1292,8 @@
 }
 .emailAddress,
 .whatsappButton {
-  min-height: 38px;
-  border-radius: 8px;
+  min-height: 36px;
+  border-radius: 6px;
 }
 .assurance {
   display: flex;
@@ -1687,14 +1690,17 @@
 .channelText p {
   font-size: 11px;
 }
+/* Buttons keep Bloocks md (36px, 14/20) here too; only the text around
+   them compacts. */
 .uploadButton,
 .whatsappButton {
-  min-height: 34px;
-  padding: 6px 10px;
-  font-size: 11px;
+  min-height: 36px;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 20px;
 }
 .emailAddress {
-  min-height: 34px;
+  min-height: 36px;
 }
 .emailAddress code {
   font-size: 11px;

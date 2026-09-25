@@ -10,6 +10,8 @@
  * it with a different shape.
  */
 
+import type { ComponentType, ReactNode } from "react";
+
 export type TypographyVariant =
   | `title-${1 | 2 | 3}`
   | `label-${1 | 2 | 3}`
@@ -28,3 +30,16 @@ export type TypographyVariant =
   | "code";
 
 export type TypographyWeight = "normal" | "medium" | "semibold" | "bold";
+
+export interface ComboBoxOption<TValue> {
+  label: string | ReactNode;
+  value: TValue;
+  icon?: ComponentType<{ className?: string }>;
+  disabled?: boolean;
+  tooltip?: ReactNode;
+}
+
+export interface ComboBoxOptionGroup<TValue> {
+  label?: ReactNode;
+  options: ComboBoxOption<TValue>[];
+}

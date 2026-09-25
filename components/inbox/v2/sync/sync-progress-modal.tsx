@@ -155,10 +155,10 @@ const SyncProgressModal = ({
         </div>
 
         <div className="flex justify-end gap-2 border-t border-neutral-gray px-5 py-3.5">
-          <Button variant="outline" size="sm" onClick={onStop}>
+          <Button variant="outline" onClick={onStop}>
             Stop Sync
           </Button>
-          <Button size="sm" onClick={onContinueInBackground}>
+          <Button onClick={onContinueInBackground}>
             Continue in Background
           </Button>
         </div>

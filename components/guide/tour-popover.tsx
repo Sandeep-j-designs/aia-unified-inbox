@@ -216,28 +216,16 @@ const TourPopover = ({ step, index, total, onBack, onNext, onSkip }: Props) => {
           </p>
         )}
         <div className="mt-4 flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="px-0 text-secondary-foreground hover:bg-transparent hover:text-foreground"
-            onClick={onSkip}
-          >
+          <Button variant="link-secondary" className="px-0" onClick={onSkip}>
             Skip tour
           </Button>
           <span className="flex-1" />
           {index > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-primary"
-              onClick={onBack}
-            >
+            <Button variant="outline" onClick={onBack}>
               Back
             </Button>
           )}
-          <Button size="sm" onClick={onNext}>
-            {last ? "Finish" : "Next"}
-          </Button>
+          <Button onClick={onNext}>{last ? "Finish" : "Next"}</Button>
         </div>
       </div>
     </>,

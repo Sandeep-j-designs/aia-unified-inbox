@@ -33,7 +33,6 @@ import {
   MessageCircle,
   MoreVertical,
   Pin,
-  Plus,
   PinOff,
   RotateCcw,
   Search,
@@ -77,17 +76,9 @@ import {
   Sheet as Drawer,
   SheetContent as DrawerContent,
 } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-} from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
 import { Label } from "@/components/ui/label";
 import {
@@ -116,9 +107,13 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { ColumnFilter, FilterPanel } from "./filter-panel";
+import { format, parseISO } from "date-fns";
+import FilterChip from "@/components/common/filter-chip";
+import DateFilter from "@/components/common/date-filter";
 import type { FilterOption } from "./filter-panel";
 import Preview from "./preview";
-import EditableCell, { GROUP_CLASS } from "./editable-cell";
+import EditableCell from "./editable-cell";
+import BulkActionBar from "@/components/common/bulk-action-bar";
 import CreateMasterDialog from "./create-master-dialog";
 import { InboxWelcomeDialog } from "./kickstart";
 import {
@@ -646,14 +641,13 @@ const band = "flex flex-wrap items-center gap-2";
 /**
  * One column's filter, promoted onto the bar (Figma 716:15029).
  *
- * The trigger is the frame's Quick Filter: 32px, bordered, muted 14px label and
- * a chevron. The body is `ColumnFilter` — the same searchable multi-select the
+ * The trigger is a Bloocks FilterChip, the same as the Received date chip
+ * beside it. The body is `ColumnFilter` — the same searchable multi-select the
  * column-header funnel opens — rather than a second list written to look like
  * it, so "Source" means one thing wherever it is answered.
  *
- * The count sits in the label because the trigger is the only place an applied
- * quick filter shows: the frame's resting state has no room to say "2 of these
- * are on", and a dropdown that silently filters the grid is worse than a wide
+ * The chip says what is applied because it is the only place an applied quick
+ * filter shows: a dropdown that silently filters the grid is worse than a wide
  * one.
  */
 const QuickFilter = ({
@@ -669,22 +663,16 @@ const QuickFilter = ({
 }) => (
   <Popover>
     <PopoverTrigger asChild>
-      <Button
-        variant="outline"
-        className={cn(
-          "h-8 shrink-0 gap-2 px-3",
-          T.value,
-          selected.length ? "text-foreground" : "text-muted-foreground"
+      {/* A Bloocks FilterChip: it names what is applied ("Source:
+          WhatsApp", or a count for several) and its × clears in place. */}
+      <FilterChip
+        label={label}
+        selectionType="multiple"
+        value={selected.map(
+          (value) => options.find((o) => o.value === value)?.label ?? value
         )}
-      >
-        {label}
-        {selected.length ? (
-          <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-caption-1 font-semibold tabular-nums text-primary-foreground">
-            {selected.length}
-          </span>
-        ) : null}
-        <ChevronDown className="h-3.5 w-3.5 flex-none opacity-80" />
-      </Button>
+        onClearButtonClick={() => onChange([])}
+      />
     </PopoverTrigger>
     <PopoverContent align="start" className="w-auto p-0">
       <ColumnFilter
@@ -782,14 +770,25 @@ export default function Workspace() {
   useEffect(() => {
     if (!selected.length) setBulkStaged({});
   }, [selected.length]);
-  /** Ledgers and vendors created from the bulk bar, this session. */
+  /**
+   * Ledgers and vendors created this session — from the bulk bar, a journal
+   * line or a table cell. One list, so a master made in one place is offered
+   * in all of them.
+   */
   const [createdMasters, setCreatedMasters] = useState<{
     Ledger: string[];
     Vendor: string[];
   }>({ Ledger: [], Vendor: [] });
+  /**
+   * The create dialog in flight. `then` is what the caller does with the new
+   * name: stage it on the bar, set it on a journal line, write it to a cell.
+   */
   const [creating, setCreating] = useState<{
     field: "Ledger" | "Vendor";
     name: string;
+    then: (name: string) => void;
+    /** The dialog's line on what happens next; the bar's wording if unset. */
+    description?: string;
   } | null>(null);
   const resizeCleanup = useRef<(() => void) | null>(null);
   const gridElement = useRef<HTMLDivElement | null>(null);
@@ -1554,6 +1553,10 @@ export default function Workspace() {
     Object.values(filters.cols).reduce((n, v) => n + (v?.length ?? 0), 0) +
     ["from", "to", "min", "max"].filter((k) => filters[k as keyof Filters])
       .length;
+  /** What the Filters button's badge counts: the date has its own chip. */
+  const panelFilterCount =
+    activeFilterCount -
+    ["from", "to"].filter((k) => filters[k as keyof Filters]).length;
   const setFilter = (key: keyof typeof filters, value: string) => {
     setFilters((f) => ({ ...f, [key]: value }));
     setPage(0);
@@ -2581,7 +2584,6 @@ export default function Workspace() {
             <EmptyState title="Item unavailable in this company">
               <Button
                 variant="outline"
-                className="text-primary"
                 onClick={() => void router.push("/inbox")}
               >
                 Back to Inbox
@@ -2624,7 +2626,7 @@ export default function Workspace() {
                         className={cn(
                           // rounded-md, which is 6px here: --radius is 0.5rem
                           // and md subtracts 2. Matches the back chevron.
-                          "h-8 w-auto gap-1.5 rounded-md border-0 bg-accent px-3 shadow-none",
+                          "h-9 w-auto gap-1.5 rounded-md border-0 bg-accent px-3 shadow-none",
                           "text-sm font-semibold text-accent-foreground",
                           "hover:bg-muted focus:ring-0 focus-visible:ring-2 focus-visible:ring-ring",
                           "[&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0 [&>svg]:opacity-70"
@@ -2769,8 +2771,7 @@ export default function Workspace() {
                     */}
                     {item.status === "Approved" && !approvedEditing && (
                       <Button
-                        variant="outline"
-                        className="h-8 px-3 text-xs"
+                        variant="secondary"
                         disabled={!state.permissions.includes(item.route)}
                         onClick={() => setEditingApproved(item.id)}
                       >
@@ -2782,22 +2783,16 @@ export default function Workspace() {
                         button is the way out of the state you are in, and it
                         should not move between the two. */}
                     {approvedEditing && (
-                      <Button
-                        className="h-8 px-3 text-xs"
-                        onClick={finishApprovedEdit}
-                      >
-                        Done editing
-                      </Button>
+                      <Button onClick={finishApprovedEdit}>Done editing</Button>
                     )}
                     {reviewable && (
                       <BlockedReason reason={blockReason}>
                         <Button
                           data-guide-id="inbox-approve"
-                          // h-8/px-3 to sit level with Delete, the route chip
+                          // Default size, level with Delete, the route chip
                           // and the pager: it stays the loudest thing in the
                           // row by being the only filled control, not by being
                           // taller.
-                          className="h-8 px-3 text-xs"
                           /*
                             A journal's own faults no longer disable this. They
                             are answered on the form — the imbalance banner and
@@ -2868,7 +2863,6 @@ export default function Workspace() {
                   </p>
                   <Button
                     variant="outline"
-                    className="text-primary"
                     onClick={() => void router.push("/inbox")}
                   >
                     Back to Inbox
@@ -2987,8 +2981,6 @@ export default function Workspace() {
                       action={
                         <Button
                           variant="outline"
-                          size="sm"
-                          className="h-9 border-neutral-gray shadow-none"
                           onClick={() =>
                             void router.push(
                               detailHref(matched.id, "voucher=1")
@@ -3072,6 +3064,21 @@ export default function Workspace() {
                             attempted={attempted}
                             readOnly={!canReview}
                             onEdit={edit}
+                            createdLedgers={createdMasters.Ledger}
+                            onCreateLedger={(name, assign) =>
+                              setCreating({
+                                field: "Ledger",
+                                name,
+                                description:
+                                  "It is added to your books and set on this line.",
+                                then: (created) => {
+                                  assign(created);
+                                  notify(
+                                    `Ledger “${created}” created and set on the line.`
+                                  );
+                                },
+                              })
+                            }
                           />
                         </div>
                       </ResizablePanel>
@@ -3343,7 +3350,7 @@ export default function Workspace() {
                           placeholder="Search..."
                           value={filters.search}
                           onChange={(e) => setFilter("search", e.target.value)}
-                          className={cn("h-8 pr-9", T.cell, "text-foreground")}
+                          className={cn("h-9 pr-9", T.cell, "text-foreground")}
                         />
                         {/* The key that gets you here, shown where you would look
                         for it (Figma 24142:49994). It hides once there is text
@@ -3359,7 +3366,8 @@ export default function Workspace() {
                       </div>
                       <Popover>
                         <PopoverTrigger asChild>
-                          {/* Icon-only, 32x32 (Figma 716:15029). The count rides on
+                          {/* Icon-only, 36x36 — the default icon button, level
+                          with the search field (Figma 716:15029 drew it at 32). The count rides on
                           it as a corner badge rather than inline: without the
                           "Filters" label there is nothing else on the bar that
                           says filters are applied, and a strip with two of them
@@ -3368,17 +3376,17 @@ export default function Workspace() {
                             variant="outline"
                             size="icon"
                             aria-label={
-                              activeFilterCount
-                                ? `Filters, ${activeFilterCount} applied`
+                              panelFilterCount
+                                ? `Filters, ${panelFilterCount} applied`
                                 : "Filters"
                             }
                             title="Filters"
-                            className="relative h-8 w-8 shrink-0 text-primary"
+                            className="relative shrink-0"
                           >
                             <ListFilter className="h-4 w-4" />
-                            {activeFilterCount ? (
+                            {panelFilterCount ? (
                               <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-caption-1 font-semibold tabular-nums text-primary-foreground">
-                                {activeFilterCount}
+                                {panelFilterCount}
                               </span>
                             ) : null}
                           </Button>
@@ -3398,19 +3406,12 @@ export default function Workspace() {
                                   setColFilter(column, next),
                                 activeCount: colFilter(column).length,
                               })),
-                              // Date and Amount are two categories, not one. They
-                              // are answers to different questions — "what came in
-                              // last week" and "what is over ₹1L" — and pairing
-                              // them hid whichever one you were not there for.
+                              // Amount stays a panel category. The date is not
+                              // here: it has its own chip in the bar (Received),
+                              // with presets, since "what came in this month"
+                              // is the filter people reach for most.
                               ...(
                                 [
-                                  [
-                                    "Date",
-                                    [
-                                      ["from", "Received from", "date"],
-                                      ["to", "Received to", "date"],
-                                    ],
-                                  ],
                                   [
                                     "Amount",
                                     [
@@ -3463,13 +3464,32 @@ export default function Workspace() {
                           onChange={(next) => setColFilter(column, next)}
                         />
                       ))}
+                      <DateFilter
+                        label="Received"
+                        presetsLabel="Show documents received"
+                        maxDate={new Date()}
+                        value={{
+                          from: filters.from
+                            ? parseISO(filters.from)
+                            : undefined,
+                          to: filters.to ? parseISO(filters.to) : undefined,
+                        }}
+                        onChange={({ from, to }) => {
+                          setFilters((f) => ({
+                            ...f,
+                            from: from ? format(from, "yyyy-MM-dd") : "",
+                            to: to ? format(to, "yyyy-MM-dd") : "",
+                          }));
+                          setPage(0);
+                          setSelected([]);
+                        }}
+                      />
                       {/* Set by "See what failed" on a partial or failed run, and
                       the only way out is to dismiss it — it is not one of the
                       filters, so Reset Filters must not silently take it off. */}
                       {sync.reviewingFailures && (
                         <Button
                           variant="secondary"
-                          className="h-8 gap-2"
                           onClick={sync.clearFailureReview}
                         >
                           Didn&rsquo;t reach Tally
@@ -3491,16 +3511,9 @@ export default function Workspace() {
                       {(activeFilterCount > 0 || filters.search) && (
                         <Button
                           variant="ghost"
-                          // Red per Figma 716:15029, which asks for
-                          // status-error-text-700 (#a80f0f). Taking the project's
-                          // --destructive-foreground (#B10000) instead: that token is
-                          // the AA-corrected one, and hardcoding the frame's hex
-                          // would put a sixth unmanaged status red in the file.
-                          className={cn(
-                            "h-[29px] gap-2 px-0 hover:bg-transparent",
-                            T.value,
-                            "text-destructive-foreground hover:text-destructive-foreground"
-                          )}
+                          // Plain ghost, not the red Figma 716:15029 drew:
+                          // clearing filters is an undo, not a removal, and
+                          // red is kept for the buttons that delete things.
                           onClick={() => {
                             setFilters(defaultFilters);
                             setSelected([]);
@@ -3521,14 +3534,10 @@ export default function Workspace() {
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
-                            // px-[15px] and 12px grey text: it names a panel rather
-                            // than performing an action, so it does not take the
+                            // Neutral outline: it names a panel rather than
+                            // performing an action, so it does not take the
                             // brand (Figma 24156:151930).
-                            className={cn(
-                              "h-8 gap-2 px-[15px]",
-                              T.cell,
-                              "text-muted-foreground"
-                            )}
+                            className="h-9"
                           >
                             <Columns3 className="h-4 w-4" />
                             Columns
@@ -3725,7 +3734,7 @@ export default function Workspace() {
                           <div className="flex items-center px-1.5 py-1.5">
                             <Button
                               variant="ghost"
-                              className="flex-1 gap-2 text-secondary-foreground"
+                              className="flex-1"
                               onClick={resetWidths}
                             >
                               <RotateCcw className="h-4 w-4" />
@@ -3733,7 +3742,7 @@ export default function Workspace() {
                             </Button>
                             <Button
                               variant="ghost"
-                              className="flex-1 gap-2 text-secondary-foreground"
+                              className="flex-1"
                               onClick={resetColumns}
                             >
                               <RotateCcw className="h-4 w-4" />
@@ -3753,7 +3762,6 @@ export default function Workspace() {
                         size="icon"
                         aria-label="Keyboard shortcuts"
                         title="Keyboard shortcuts"
-                        className="h-8 w-8 text-primary"
                         onClick={() => setShortcutsOpen(true)}
                       >
                         <Keyboard className="h-4 w-4" />
@@ -4166,19 +4174,46 @@ export default function Workspace() {
                                         )
                                       }
                                       value={x.form.party}
-                                      options={all
-                                        .filter(
-                                          (candidate) =>
-                                            candidate.route === x.route
-                                        )
-                                        .map(
-                                          (candidate) => candidate.form.party
-                                        )
+                                      options={[
+                                        ...(x.route === "AR"
+                                          ? []
+                                          : createdMasters.Vendor),
+                                        ...all
+                                          .filter(
+                                            (candidate) =>
+                                              candidate.route === x.route
+                                          )
+                                          .map(
+                                            (candidate) => candidate.form.party
+                                          ),
+                                      ]
                                         .filter(Boolean)
                                         .sort()}
                                       editable={canEditTableItem(x)}
                                       onChange={(value) =>
                                         editTableField(x, "Vendor", value)
+                                      }
+                                      // Vendors only: there is no customer
+                                      // master to create from the Inbox.
+                                      createNoun="vendor"
+                                      onCreate={
+                                        x.route === "AR"
+                                          ? undefined
+                                          : (name) =>
+                                              setCreating({
+                                                field: "Vendor",
+                                                name,
+                                                description: `It is added to your books and set on ${x.file.name}.`,
+                                                // editTableField says what
+                                                // changed, so no second toast.
+                                                then: (created) => {
+                                                  editTableField(
+                                                    x,
+                                                    "Vendor",
+                                                    created
+                                                  );
+                                                },
+                                              })
                                       }
                                     />
                                   ) : c === "Voucher type" ? (
@@ -4367,8 +4402,7 @@ export default function Workspace() {
                                   : `Nothing in ${tab} matches. Another tab may hold what you’re looking for.`}
                               </p>
                               <Button
-                                variant="outline"
-                                className="text-primary"
+                                variant="secondary"
                                 onClick={() => {
                                   setFilters(defaultFilters);
                                   setSelected([]);
@@ -4400,8 +4434,7 @@ export default function Workspace() {
                                 first.
                               </p>
                               <Button
-                                variant="outline"
-                                className="text-primary"
+                                variant="secondary"
                                 onClick={() => setDialog("intake")}
                               >
                                 Receive documents
@@ -4432,157 +4465,90 @@ export default function Workspace() {
               */}
                 {selected.length > 0 && (
                   <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
-                    <div
-                      role="toolbar"
-                      aria-label="Selected document actions"
-                      // One line, always. Staged values make the field buttons
-                      // wider, and wrapping put Delete on a row of its own; the
-                      // field buttons truncate their value instead, and only
-                      // a window too narrow for even that scrolls sideways.
-                      className="pointer-events-auto flex max-w-full flex-nowrap items-center gap-1.5 overflow-x-auto rounded-xl border border-primary/30 bg-background px-3 py-3 text-foreground shadow-xl [&>*]:shrink-0"
-                    >
-                      <strong
-                        className="whitespace-nowrap py-2 pr-1 text-sm font-semibold"
-                        title={`${selected.length} ${selected.length === 1 ? "document" : "documents"} selected`}
-                      >
-                        {selected.length} selected
-                      </strong>
-                      {/*
-                      The checkbox in the header speaks for the page it is on;
-                      this speaks for the filter. Two different claims, so two
-                      different controls — a header checkbox that silently
-                      reached across pages was the more dangerous of them.
-                    */}
-                      {filtered.length > pageRows.length && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          // Taken reads as a pressed state, not as a second
-                          // primary: Approve is the only filled button on this
-                          // bar and a rival for it would blunt both.
-                          className={cn(
-                            "whitespace-nowrap text-primary",
-                            allFilteredSelected && "border-primary bg-accent"
-                          )}
-                          onClick={() =>
-                            setSelected(
-                              allFilteredSelected
-                                ? pageRows.map((x) => x.id)
-                                : filtered.map((x) => x.id)
-                            )
-                          }
-                        >
-                          {allFilteredSelected && (
-                            <Check className="h-4 w-4" aria-hidden />
-                          )}
-                          {allFilteredSelected ? "Selected all" : "Select all"}{" "}
-                          {filtered.length}
-                        </Button>
-                      )}
-                      <span
-                        aria-hidden
-                        className="h-6 w-px flex-none bg-neutral-gray"
-                      />
-                      {BULK_FIELDS.map((field) => (
-                        <BulkReassign
-                          key={field}
-                          field={field}
-                          options={bulkOptions(field)}
-                          groups={
-                            field === "Voucher Type"
-                              ? voucherTypeGroups
-                              : undefined
-                          }
-                          staged={bulkStaged[field]}
-                          onPick={(value) => stageBulk(field, value)}
-                          onCreate={
-                            field === "Ledger" || field === "Vendor"
-                              ? (name) => setCreating({ field, name })
-                              : undefined
-                          }
-                        />
-                      ))}
-                      <CreateMasterDialog
-                        kind={
-                          creating?.field === "Vendor"
-                            ? "vendor"
-                            : creating
-                              ? "ledger"
-                              : null
-                        }
-                        initialName={creating?.name || ""}
-                        existing={creating ? bulkOptions(creating.field) : []}
-                        onClose={() => setCreating(null)}
-                        onCreate={(name) => {
-                          if (!creating) return;
-                          const field = creating.field;
-                          setCreatedMasters((masters) => ({
-                            ...masters,
-                            [field]: [...masters[field], name],
-                          }));
-                          setCreating(null);
-                          notify(
-                            `${field === "Vendor" ? "Vendor" : "Ledger"} “${name}” created\nSave to set it on the selected documents.`
-                          );
-                          setBulkStaged((staged) => ({
-                            ...staged,
-                            [field]: name,
-                          }));
-                        }}
-                      />
-                      {/* Only once something is staged: with nothing to
-                          write, Save would be a button that does nothing. */}
-                      {Object.keys(bulkStaged).length > 0 && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="whitespace-nowrap text-primary"
-                          onClick={bulkSave}
-                        >
-                          Save
-                        </Button>
-                      )}
-                      <Button size="sm" onClick={bulkApprove}>
-                        <Check className="h-4 w-4" />
-                        {/* Says when it will also write the staged edits, so
-                            the bar never changes rows the user did not expect. */}
-                        {Object.keys(bulkStaged).length
-                          ? "Save & approve"
-                          : "Approve"}
-                      </Button>
-                      <BulkButton
-                        label="Delete"
-                        onClick={() => {
-                          askDelete(
-                            `${selected.length} document${selected.length === 1 ? "" : "s"}`,
-                            () =>
-                              reportBulk(
-                                "Deleted",
-                                applyBulkAction(selected, "Delete")
-                              ),
-                            selected.length !== 1
-                          );
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        {/* Word below xl, where the bar needs the width for
-                            staged values; the icon keeps its label. */}
-                        <span className="hidden xl:inline">Delete</span>
-                      </BulkButton>
-                      {/* A Restore button used to sit here behind
-                          `tab === "Deleted"`. There is no Deleted tab — the
-                          tab list is All, Need review, Approved, Duplicate —
-                          so the condition was never true and the button was
-                          never reachable. */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Clear selection"
-                        onClick={() => setSelected([])}
-                      >
-                        <X className="h-5 w-5" />
-                      </Button>
-                    </div>
+                    {/* The Bloocks BulkActionBar. Its fields stage a value for
+                        the selection; Save writes the staged values and
+                        Save & approve writes them and approves. */}
+                    <BulkActionBar
+                      className="pointer-events-auto"
+                      selectedCount={selected.length}
+                      // The header checkbox speaks for the page; this speaks
+                      // for the filter, and goes once all of it is selected.
+                      totalCount={filtered.length}
+                      onSelectAll={
+                        allFilteredSelected
+                          ? undefined
+                          : () => setSelected(filtered.map((x) => x.id))
+                      }
+                      fields={BULK_FIELDS.map((field) => ({
+                        key: field,
+                        label: BULK_SHORT[field] || field,
+                        value: bulkStaged[field],
+                        options: bulkOptions(field).map((value) => ({
+                          label: value,
+                          value,
+                        })),
+                        optionGroups:
+                          field === "Voucher Type"
+                            ? voucherTypeGroups.map((group) => ({
+                                label: group.heading,
+                                options: group.options.map((value) => ({
+                                  label: value,
+                                  value,
+                                })),
+                              }))
+                            : undefined,
+                        createNoun: field === "Vendor" ? "vendor" : "ledger",
+                        onCreate:
+                          field === "Ledger" || field === "Vendor"
+                            ? (name: string) =>
+                                setCreating({
+                                  field,
+                                  name,
+                                  then: (created) => {
+                                    notify(
+                                      `${field === "Vendor" ? "Vendor" : "Ledger"} “${created}” created\nSave to set it on the selected documents.`
+                                    );
+                                    setBulkStaged((staged) => ({
+                                      ...staged,
+                                      [field]: created,
+                                    }));
+                                  },
+                                })
+                            : undefined,
+                      }))}
+                      onFieldChange={(key, value) =>
+                        stageBulk(key as BulkField, value)
+                      }
+                      actions={[
+                        // Only once something is staged: with nothing to
+                        // write, Save would be a button that does nothing.
+                        ...(Object.keys(bulkStaged).length
+                          ? [{ label: "Save", onClick: bulkSave }]
+                          : []),
+                        {
+                          // Says when it will also write the staged edits, so
+                          // the bar never changes rows the user did not expect.
+                          label: Object.keys(bulkStaged).length
+                            ? "Save & approve"
+                            : "Approve",
+                          onClick: bulkApprove,
+                          variant: "primary" as const,
+                        },
+                      ]}
+                      deleteLabel={`Delete ${selected.length} selected`}
+                      onDelete={() =>
+                        askDelete(
+                          `${selected.length} document${selected.length === 1 ? "" : "s"}`,
+                          () =>
+                            reportBulk(
+                              "Deleted",
+                              applyBulkAction(selected, "Delete")
+                            ),
+                          selected.length !== 1
+                        )
+                      }
+                      onClearSelection={() => setSelected([])}
+                    />
                   </div>
                 )}
               </div>
@@ -4684,7 +4650,6 @@ export default function Workspace() {
                 </code>
                 <Button
                   variant="outline"
-                  className="text-primary"
                   onClick={() => {
                     void navigator.clipboard.writeText(
                       `${company.slug}@inbox.aiaccountant.app`
@@ -4701,7 +4666,6 @@ export default function Workspace() {
               </p>
               <Button
                 variant="outline"
-                className="text-primary"
                 onClick={() => {
                   configure({
                     emailSuffix: {
@@ -4749,8 +4713,7 @@ export default function Workspace() {
           </p>
           <div className={band}>
             <Button
-              variant="outline"
-              className="text-primary"
+              variant="secondary"
               onClick={() => {
                 intakeMode.current = "auto";
                 setSource("whatsapp");
@@ -4764,8 +4727,7 @@ export default function Workspace() {
               Try WhatsApp intake
             </Button>
             <Button
-              variant="outline"
-              className="text-primary"
+              variant="secondary"
               onClick={() => {
                 intakeMode.current = "auto";
                 setSource("email");
@@ -4997,7 +4959,7 @@ export default function Workspace() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="h-6 w-6 shrink-0"
+                      className="shrink-0"
                       aria-label="Copy forwarding email address"
                       onClick={async () => {
                         try {
@@ -5034,10 +4996,12 @@ export default function Workspace() {
                     <span className={uploadStyles.channel}>
                       <MessageCircle aria-hidden />
                       WhatsApp
+                      {/* A link, not a button: it sits inside a line of
+                          text, so it takes the line's size rather than a
+                          button's height and padding. */}
                       <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 shrink-0 px-1.5 text-xs text-primary"
+                        variant="link"
+                        className="h-auto shrink-0 p-0 text-xs"
                         onClick={() => setDialog("whatsapp")}
                       >
                         Set up
@@ -5170,12 +5134,11 @@ export default function Workspace() {
                       : null;
                   const retryAll = !busy && retryableIndexes.length > 1 && (
                     <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 flex-none gap-1.5 bg-background text-primary"
+                      variant="secondary"
+                      className="flex-none"
                       onClick={() => void retryUploads(retryableIndexes)}
                     >
-                      <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                      <RotateCcw aria-hidden />
                       Retry all
                     </Button>
                   );
@@ -5267,18 +5230,26 @@ export default function Workspace() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 flex-none gap-1.5 px-2.5 text-xs text-secondary-foreground hover:text-primary"
+                              className="flex-none"
                               aria-label={`Retry ${f.name}`}
                               onClick={() => void retryUploads([i])}
                             >
-                              <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                              <RotateCcw aria-hidden />
                               Retry
                             </Button>
                           ) : (
                             /* A label around a hidden input, like the drop zone:
                              the button is the file picker. */
-                            <label className="relative inline-flex h-8 flex-none cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-accent hover:text-primary focus-within:outline-none focus-within:ring-2 focus-within:ring-ring">
-                              <Upload className="h-3.5 w-3.5" aria-hidden />
+                            <label
+                              className={cn(
+                                buttonVariants({
+                                  variant: "ghost",
+                                  size: "sm",
+                                }),
+                                "relative flex-none cursor-pointer focus-within:outline-none focus-within:ring-2 focus-within:ring-ring"
+                              )}
+                            >
+                              <Upload aria-hidden />
                               Choose file
                               <input
                                 type="file"
@@ -5556,7 +5527,6 @@ export default function Workspace() {
         <div className={cn(band, "mt-5")}>
           <Button
             variant="outline"
-            className="text-primary"
             onClick={() => {
               setDialog("");
               guide.startJourney("inbox");
@@ -5572,7 +5542,6 @@ export default function Workspace() {
           */}
           <Button
             variant="outline"
-            className="text-primary"
             onClick={() => {
               const isNew = withinNewWindow(state.launchedAt);
               configure({
@@ -5604,11 +5573,7 @@ export default function Workspace() {
         onClose={() => setDialog("")}
       >
         <div className="mb-4">
-          <Button
-            variant="outline"
-            className="text-primary"
-            onClick={downloadAudit}
-          >
+          <Button variant="outline" onClick={downloadAudit}>
             Export JSON
           </Button>
         </div>
@@ -5635,6 +5600,28 @@ export default function Workspace() {
             ))}
         </div>
       </PageDialog>
+      {/* One create dialog for every picker that offers "+ Create …". */}
+      <CreateMasterDialog
+        kind={
+          creating?.field === "Vendor" ? "vendor" : creating ? "ledger" : null
+        }
+        initialName={creating?.name || ""}
+        existing={creating ? bulkOptions(creating.field) : []}
+        description={creating?.description}
+        onClose={() => setCreating(null)}
+        onCreate={(name) => {
+          if (!creating) return;
+          const { field, then } = creating;
+          // DEV: POST /api/accounting-masters/ledgers (see the dialog), whichever
+          // picker asked for it.
+          setCreatedMasters((masters) => ({
+            ...masters,
+            [field]: [...masters[field], name],
+          }));
+          setCreating(null);
+          then(name);
+        }}
+      />
       {/*
         One dialog for every Delete on the screen — the row kebab, the
         selection bar, the review page and the register all set the same
@@ -5664,11 +5651,11 @@ export default function Workspace() {
           <Button variant="outline" onClick={() => setConfirmDelete(null)}>
             Cancel
           </Button>
-          {/* The ordinary primary button. Red is for damage — money moved,
-              a record destroyed, something that reaches outside this screen.
-              A document leaving the Inbox is none of that, and a palette that
-              shouts at every removal has nothing left for the day it matters. */}
+          {/* Filled red: the confirmation is the one place the removal
+              carries full weight. The Delete that opened this dialog is a
+              red ghost, so the colour carries through without shouting. */}
           <Button
+            isDestructive
             onClick={() => {
               confirmDelete?.run();
               setConfirmDelete(null);
@@ -5731,11 +5718,7 @@ export default function Workspace() {
           </Stat>
         </dl>
         <div className="mt-5">
-          <Button
-            variant="outline"
-            className="text-primary"
-            onClick={() => setDialog("audit")}
-          >
+          <Button variant="outline" onClick={() => setDialog("audit")}>
             Inspect bulk and recovery events
           </Button>
         </div>
@@ -5884,12 +5867,11 @@ const BlockedReason = ({
   );
 
 /**
- * The review page's Delete — an outline button like the rest of the bar.
+ * The review page's Delete — a destructive ghost, the lowest-emphasis red.
  *
- * It was red. Removing a document from the Inbox is not damage: nothing is
- * posted, nothing is destroyed outside this screen, and the confirmation is
- * what makes it deliberate. Red spent on it is red unavailable for something
- * that does reach outside.
+ * Red marks it as the one control on the bar that removes something; ghost
+ * keeps it quieter than every other button so it never competes with
+ * Approve. The confirmation's filled red button is where the weight goes.
  */
 const DangerButton = ({
   children,
@@ -5898,36 +5880,7 @@ const DangerButton = ({
   children: React.ReactNode;
   onClick: () => void;
 }) => (
-  <Button
-    variant="outline"
-    onClick={onClick}
-    className="h-8 px-3 text-xs text-primary"
-  >
-    {children}
-  </Button>
-);
-
-/** Secondary action inside the floating selection toolbar. */
-const BulkButton = ({
-  children,
-  label,
-  onClick,
-}: {
-  children: React.ReactNode;
-  /** Names the button when its word is hidden at narrow widths. */
-  label?: string;
-  onClick: () => void;
-}) => (
-  // Same reasoning as DangerButton: it matches the reassign dropdowns beside
-  // it, and Approve stays the only filled button on the bar.
-  <Button
-    variant="outline"
-    size="sm"
-    onClick={onClick}
-    aria-label={label}
-    title={label}
-    className="whitespace-nowrap text-primary"
-  >
+  <Button variant="ghost" isDestructive onClick={onClick}>
     {children}
   </Button>
 );
@@ -5959,8 +5912,7 @@ const RowActions = ({
     <DropdownMenuTrigger asChild>
       <Button
         variant="ghost"
-        size="icon"
-        className="h-8 w-8"
+        size="icon-sm"
         aria-label={`Actions for ${item.file.name}`}
       >
         <MoreVertical className="h-4 w-4" />
@@ -6005,144 +5957,6 @@ const BULK_FIELDS: BulkField[] = [
   "Ledger",
 ];
 
-/**
- * One reassignable field, as a dropdown on the selection bar.
- *
- * Always searchable: vendors and ledgers run to hundreds of names, and the two
- * short lists lose nothing by carrying a box they do not need — a set of
- * triggers that open two different kinds of panel is a worse trade than one
- * spare input.
- *
- * Picking applies immediately, so the popover closes on select and the toast
- * reports what landed. There is no Apply: the rows were chosen before this was
- * opened, and a second confirmation would be confirming the first one.
- */
-const BulkReassign = ({
-  field,
-  options,
-  groups,
-  staged,
-  onPick,
-  onCreate,
-}: {
-  field: BulkField;
-  options: string[];
-  /** Lay the options out under headings, as the Voucher type cell does. */
-  groups?: { heading: string; options: readonly string[] }[];
-  /** The value waiting for Save or Save & approve, if any. */
-  staged?: string;
-  onPick: (value: string) => void;
-  /** Offer "Create …" at the foot of the list, seeded with the search text. */
-  onCreate?: (name: string) => void;
-}) => {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const noun = field === "Vendor" ? "vendor" : "ledger";
-  const item = (value: string) => (
-    <CommandItem
-      key={value}
-      value={value}
-      onSelect={() => {
-        setOpen(false);
-        onPick(value);
-      }}
-    >
-      <span className="truncate">{value}</span>
-      {value === staged && (
-        <Check className="ml-auto h-4 w-4 text-primary" aria-hidden />
-      )}
-    </CommandItem>
-  );
-
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setQuery("");
-      }}
-    >
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          // Staged: the button says to what, so the edits Approve will write
-          // can be read back off the bar first.
-          className={cn(
-            // The one thing on the bar allowed to shrink: its value truncates
-            // before anything wraps.
-            "min-w-[72px] max-w-[200px] !shrink whitespace-nowrap text-primary",
-            staged && "border-primary bg-accent"
-          )}
-          title={staged ? `${field}: ${staged} — not saved yet` : undefined}
-        >
-          {/* No check here: the filled border already says "staged", and
-              the 24px it took is what the value needs at narrow widths. */}
-          {staged ? (
-            // The field name never truncates, only the value: "Vouch…" names
-            // nothing, "Voucher · Pay…" still says which button this is.
-            <>
-              <span className="flex-none">{BULK_SHORT[field] || field} ·</span>
-              <span className="min-w-0 truncate">{staged}</span>
-            </>
-          ) : (
-            <span className="truncate">{BULK_SHORT[field] || field}</span>
-          )}
-          <ChevronDown className="h-4 w-4 flex-none opacity-70" aria-hidden />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" side="top" className="w-64 p-0">
-        <Command>
-          <CommandInput
-            aria-label={`Search ${field}`}
-            placeholder={`Search ${field.toLowerCase()}…`}
-            value={query}
-            onValueChange={setQuery}
-          />
-          <CommandList className="max-h-64 p-1">
-            <CommandEmpty>
-              No matching {field.toLowerCase()} found.
-            </CommandEmpty>
-            {groups
-              ? groups.map((group) => (
-                  <CommandGroup
-                    key={group.heading}
-                    heading={group.heading}
-                    className={GROUP_CLASS}
-                  >
-                    {group.options.map(item)}
-                  </CommandGroup>
-                ))
-              : options.map(item)}
-          </CommandList>
-          {onCreate && (
-            // Outside the list so it is there whatever the search matches,
-            // including nothing — which is when it is most needed.
-            <div className="border-t border-neutral-gray p-1">
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-primary hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
-                onClick={() => {
-                  setOpen(false);
-                  onCreate(query.trim());
-                  setQuery("");
-                }}
-              >
-                <Plus className="h-4 w-4 flex-none" aria-hidden />
-                <span className="truncate">
-                  {query.trim()
-                    ? `Create ${noun} “${query.trim()}”`
-                    : `Create ${noun}`}
-                </span>
-              </button>
-            </div>
-          )}
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-};
-
 const PageButton = ({
   label,
   disabled,
@@ -6163,7 +5977,7 @@ const PageButton = ({
     aria-label={label}
     title={label}
     className={cn(
-      "h-7 w-7 text-secondary-foreground hover:bg-section hover:text-primary",
+      "text-secondary-foreground hover:bg-section hover:text-primary",
       className
     )}
     disabled={disabled}
@@ -6458,9 +6272,11 @@ function ReviewForm({
                       {!readOnly && (
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="icon-sm"
                           aria-label={`Remove line ${i + 1}`}
-                          className="h-8 w-8 text-secondary-foreground hover:bg-destructive hover:text-destructive-foreground"
+                          // Grey until hovered: a red icon on every row would
+                          // be the loudest thing in the table.
+                          className="text-secondary-foreground hover:bg-destructive hover:text-destructive-foreground"
                           onClick={() =>
                             onEdit({ lines: f.lines.filter((_, n) => n !== i) })
                           }
@@ -6481,8 +6297,7 @@ function ReviewForm({
           </datalist>
           {!readOnly && (
             <Button
-              variant="outline"
-              className="text-primary"
+              variant="secondary"
               onClick={() =>
                 onEdit({
                   lines: [
