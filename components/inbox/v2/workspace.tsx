@@ -1383,31 +1383,6 @@ export default function Workspace() {
     ? []
     : state.items.filter((x) => x.company === state.company && !x.priorVoucher);
   /*
-    Documents still being read arrive as a toast, not a banner over the queue:
-    it says so once when a batch lands and then gets out of the way, like every
-    other notice here. It fires when the count goes up (a new upload, or
-    opening the queue with some already in progress), not as it counts down,
-    because each document turning up in the table says the rest.
-  */
-  const preparing = all.filter((x) =>
-    ["Received", "Extracting"].includes(x.status)
-  ).length;
-  const preparingBefore = useRef(0);
-  useEffect(() => {
-    if (!moduleRoute && preparing > preparingBefore.current)
-      toast.info(
-        `Preparing ${preparing} document${preparing === 1 ? "" : "s"}`,
-        {
-          description:
-            preparing === 1
-              ? "It appears here for review as soon as it is ready."
-              : "Each one appears here for review as soon as it is ready.",
-          duration: 5500,
-        }
-      );
-    preparingBefore.current = preparing;
-  }, [preparing, moduleRoute]);
-  /*
     The welcome dialog: once per company, on its first visit to the Inbox.
 
     It opens over the queue whatever is in it — an empty Inbox, or one that
@@ -1421,6 +1396,44 @@ export default function Workspace() {
   useEffect(() => {
     if (ready && !welcomed && !moduleRoute && !id) setWelcomeOpen(true);
   }, [ready, welcomed, moduleRoute, id, state.company]);
+  /*
+    Documents still being read arrive as a toast, not a banner over the queue:
+    it says so once when a batch lands and then gets out of the way, like every
+    other notice here. It fires when the count goes up (a new upload, or
+    opening the queue with some already in progress), not as it counts down,
+    because each document turning up in the table says the rest.
+
+    Never under the welcome: that dialog already reports the batch. While it is
+    open, or about to open, the toast waits; when it closes it fires only if
+    documents are still being read, and not at all once they are all ready.
+  */
+  const preparing = all.filter((x) =>
+    ["Received", "Extracting"].includes(x.status)
+  ).length;
+  const welcomePending = welcomeOpen || (!welcomed && !moduleRoute && !id);
+  const preparingBefore = useRef(0);
+  const welcomeWasPending = useRef(false);
+  useEffect(() => {
+    const welcomeClosed = welcomeWasPending.current && !welcomePending;
+    welcomeWasPending.current = welcomePending;
+    if (
+      !moduleRoute &&
+      !welcomePending &&
+      preparing > 0 &&
+      (welcomeClosed || preparing > preparingBefore.current)
+    )
+      toast.info(
+        `Preparing ${preparing} document${preparing === 1 ? "" : "s"}`,
+        {
+          description:
+            preparing === 1
+              ? "It appears here for review as soon as it is ready."
+              : "Each one appears here for review as soon as it is ready.",
+          duration: 5500,
+        }
+      );
+    preparingBefore.current = preparing;
+  }, [preparing, moduleRoute, welcomePending]);
   const closeWelcome = () => {
     setWelcomeOpen(false);
     const seen = getState().welcomed || [];
