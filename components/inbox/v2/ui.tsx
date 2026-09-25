@@ -61,13 +61,12 @@ export const T = {
    */
   cell: "text-label-3 font-normal text-foreground",
   /**
-   * Table header cell — 12/16 SemiBold, +0.12px, text-secondary.
+   * Table header cell — 12/16 Medium, no letter-spacing, text-secondary.
    *
-   * Figma "Body (Small) - Semi Bold" (24421:72539). Note the letter-spacing is
-   * POSITIVE here and negative in `cell`; that is the design, not a typo — the
-   * header is a label and gets opened up, the value is set tight.
+   * The Bloocks TableHead (components-table--docs). It replaced Figma's
+   * SemiBold +0.12px (24421:72539) on 25 Sep 2026 to match the design system.
    */
-  head: "text-label-3 font-semibold tracking-[0.12px] text-secondary-foreground",
+  head: "text-label-3 font-medium tracking-normal text-secondary-foreground",
   /** secondary line under a cell or control */
   sub: "text-xs leading-5 text-secondary-foreground",
 } as const;

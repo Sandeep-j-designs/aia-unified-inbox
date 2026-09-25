@@ -635,7 +635,7 @@ const Register = ({
 
       <div className="min-h-0 flex-1 overflow-auto border-t border-neutral-gray">
         <Table className="border-separate border-spacing-0 [&_td]:border-b [&_td]:border-neutral-gray [&_th]:border-b [&_th]:border-neutral-gray">
-          <TableHeader className="sticky top-0 z-10 bg-[#fbfbfe]">
+          <TableHeader className="sticky top-0 z-10 bg-accent">
             <TableRow>
               <TableHead className="w-12 px-4 py-0 align-middle">
                 <Checkbox

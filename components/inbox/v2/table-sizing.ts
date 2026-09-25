@@ -3,7 +3,7 @@
  *
  * `min` is the floor for both, and no column may go below the width its header
  * needs to show in full: 12px left padding + label + 4px gap and 20px for each
- * sort/filter button + 8px right padding, plus a few px of slack for font
+ * sort/filter button + 12px right padding, plus a few px of slack for font
  * rendering. A header that truncates hides the name of what the column holds.
  */
 export const COLUMN_SIZES: Record<

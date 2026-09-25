@@ -202,11 +202,18 @@ const money = (n: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(
     n
   );
-const stamp = (s: string) =>
-  new Date(s).toLocaleString("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+/** "24 Sep 2026, 2:33 am" — the Bloocks date, with the time it arrived. */
+/** The Bloocks AmountCell's figure: rupees in en-IN groups, paise small and muted. */
+const AmountText = ({ value }: { value: number }) => {
+  const [rupees, paise] = Math.abs(value).toFixed(2).split(".");
+  return (
+    <>
+      {value < 0 && "−"}₹{new Intl.NumberFormat("en-IN").format(Number(rupees))}
+      <span className="text-caption-1 text-secondary-foreground">.{paise}</span>
+    </>
+  );
+};
+const stamp = (s: string) => format(new Date(s), "d MMM yyyy, h:mm aaa");
 /**
  * The upload cap, named rather than inlined: the modal states it, the list
  * warns against it and the submit button enforces it, and three literals would
@@ -1314,8 +1321,21 @@ export default function Workspace() {
    * show through. The row's hover tint goes on as a background image over
    * that ground, the same way the Actions cell does it.
    */
-  const STICKY_CELL =
-    "sticky z-[1] bg-background group-hover:[background-image:linear-gradient(hsl(var(--muted)/0.3),hsl(var(--muted)/0.3))]";
+  const STICKY_CELL = "sticky z-[1]";
+  /**
+   * Bloocks row states: hovering tints the one cell under the pointer, and a
+   * ticked row takes the tint across. Sticky cells paint an opaque ground so
+   * the columns scrolling under them don't show through, so they get the same
+   * tint as a colour of their own; the rest let the row's ground through.
+   */
+  const cellGround = (rowSelected: boolean, sticky: boolean) =>
+    rowSelected
+      ? sticky && "bg-accent"
+      : cn(sticky && "bg-background", "hover:bg-accent");
+  /** The last pinned column carries Bloocks' heavier divider. */
+  const lastPinned = Object.keys(stickyLeft).at(-1);
+  const PINNED_EDGE =
+    "!border-r-2 !border-r-[hsl(var(--palette-neutral-300-hsl))]";
   const tableWidth =
     SELECT_WIDTH +
     ACTIONS_WIDTH +
@@ -3775,15 +3795,16 @@ export default function Workspace() {
                     Shift+/ opens it too and a panel that only its trigger could
                     open would make the shortcut a lie.
                   */}
-                      <Button
-                        variant="outline"
-                        size="icon"
+                      {/* Same chip as Columns beside it, square: 26px. */}
+                      <button
+                        type="button"
                         aria-label="Keyboard shortcuts"
                         title="Keyboard shortcuts"
                         onClick={() => setShortcutsOpen(true)}
+                        className="inline-flex size-[26px] items-center justify-center rounded-lg border border-border bg-background text-foreground transition-[border-color,background-color] duration-150 ease-in-out hover:border-[hsl(var(--palette-neutral-300-hsl))] hover:bg-neutral-gray focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
-                        <Keyboard className="h-4 w-4" />
-                      </Button>
+                        <Keyboard className="size-3.5" aria-hidden />
+                      </button>
                     </div>
                   </div>
                   {/*
@@ -3826,7 +3847,7 @@ export default function Workspace() {
                     >
                       <TableHeader
                         role="rowgroup"
-                        className="sticky top-0 z-10 bg-[#fbfbfe] [&_tr]:shadow-none [&_th]:border-b [&_th]:border-t [&_th]:border-neutral-gray"
+                        className="sticky top-0 z-10 bg-accent [&_tr]:shadow-none [&_th]:border-b [&_th]:border-t [&_th]:border-neutral-gray"
                       >
                         <TableRow role="row" aria-rowindex={1}>
                           <TableHead
@@ -3834,7 +3855,7 @@ export default function Workspace() {
                             style={{ width: SELECT_WIDTH }}
                             // Pinned to the left edge, as Actions is to the
                             // right.
-                            className="sticky left-0 z-10 h-10 bg-[#fbfbfe] px-3 py-0 align-middle"
+                            className="sticky left-0 z-10 h-10 bg-accent px-3 py-0 align-middle"
                           >
                             {/* This page, and only this page. Reaching across
                               pages is what the bar's "Select all" button is
@@ -3891,8 +3912,9 @@ export default function Workspace() {
                               //
                               // Dividers come from the rules on <Table>.
                               className={cn(
-                                "relative h-10 whitespace-nowrap py-0 pl-3 pr-2 align-middle",
-                                c in stickyLeft && "sticky z-10 bg-[#fbfbfe]",
+                                "relative h-10 whitespace-nowrap px-3 py-0 align-middle",
+                                c in stickyLeft && "sticky z-10 bg-accent",
+                                c === lastPinned && PINNED_EDGE,
                                 T.head,
                                 grid.isCursor(-1, shown.indexOf(c)) &&
                                   "ring-2 ring-inset ring-primary"
@@ -4042,7 +4064,7 @@ export default function Workspace() {
                           <TableHead
                             role="columnheader"
                             style={{ width: ACTIONS_WIDTH }}
-                            className="sticky right-0 z-10 h-10 border-l border-neutral-gray bg-[#fbfbfe] px-3 py-0 align-middle"
+                            className="sticky right-0 z-10 h-10 border-l border-neutral-gray bg-accent px-3 py-0 align-middle"
                           >
                             <span className="flex h-4 items-center truncate">
                               Actions
@@ -4067,14 +4089,19 @@ export default function Workspace() {
                             // `group` so the pinned Actions cell can pick the
                             // row's hover tint back up — it paints its own
                             // ground and would otherwise stay pale.
-                            className="group cursor-pointer"
+                            className={cn(
+                              "group cursor-pointer hover:bg-transparent",
+                              selected.includes(x.id) &&
+                                "bg-accent hover:bg-accent"
+                            )}
                           >
                             <TableCell
                               role="gridcell"
                               onClick={(e) => e.stopPropagation()}
                               className={cn(
-                                "left-0 h-[50px] px-3 py-0 align-middle",
-                                STICKY_CELL
+                                "left-0 h-[45px] px-3 py-0 align-middle",
+                                STICKY_CELL,
+                                cellGround(selected.includes(x.id), true)
                               )}
                             >
                               <Checkbox
@@ -4115,8 +4142,13 @@ export default function Workspace() {
                                 // The fixed inner box caps intrinsic table height;
                                 // a height on <td> alone is only a minimum.
                                 className={cn(
-                                  "h-[50px] overflow-hidden px-3 py-0 align-middle",
+                                  "h-[45px] overflow-hidden px-3 py-0 align-middle",
                                   c in stickyLeft && STICKY_CELL,
+                                  cellGround(
+                                    selected.includes(x.id),
+                                    c in stickyLeft
+                                  ),
+                                  c === lastPinned && PINNED_EDGE,
                                   T.cell,
                                   // Range first, cursor second: the cursor sits
                                   // inside its own selection and has to win.
@@ -4126,14 +4158,14 @@ export default function Workspace() {
                                     "ring-2 ring-inset ring-primary"
                                 )}
                               >
-                                <div className="flex h-[49px] min-w-0 flex-col justify-center overflow-hidden [&>.inline-flex]:self-start">
+                                <div className="flex h-[44px] min-w-0 flex-col justify-center overflow-hidden [&>.inline-flex]:self-start">
                                   {c === "File" ? (
                                     <div className="flex min-w-0 items-center gap-2.5">
                                       <FileIcon ext="pdf" />
                                       <div className="min-w-0">
                                         <span className="flex min-w-0 items-center gap-1.5">
                                           <strong
-                                            className="truncate font-medium text-primary"
+                                            className="truncate font-normal text-primary"
                                             title={x.file.name}
                                           >
                                             {x.file.name}
@@ -4145,7 +4177,7 @@ export default function Workspace() {
                                             <SyncCloud state="synced" />
                                           ) : null}
                                         </span>
-                                        <span className="mt-1 block truncate text-caption-1 font-medium text-secondary-foreground">
+                                        <span className="mt-0.5 block truncate text-caption-1 text-secondary-foreground">
                                           {x.file.size}
                                         </span>
                                       </div>
@@ -4280,20 +4312,20 @@ export default function Workspace() {
                                       className="truncate text-right tabular-nums"
                                       title={money(x.amount)}
                                     >
-                                      {money(x.amount)}
+                                      <AmountText value={x.amount} />
                                     </div>
                                   ) : c === "Received" ? (
                                     <div
-                                      className="space-y-1 font-medium"
+                                      className="space-y-0.5"
                                       title={stamp(x.received)}
                                     >
                                       <time
                                         dateTime={x.received}
-                                        className="block truncate text-xs"
+                                        className="block truncate"
                                       >
                                         {stamp(x.received)}
                                       </time>
-                                      <span className="block truncate text-caption-1 font-medium text-secondary-foreground">
+                                      <span className="block truncate text-caption-1 text-secondary-foreground">
                                         {age(x.received)}
                                       </span>
                                     </div>
@@ -4379,7 +4411,10 @@ export default function Workspace() {
                                 flat colour is the tint with the ground still
                                 under it.
                               */
-                              className="sticky right-0 z-[1] h-[50px] border-l border-neutral-gray bg-background px-3 py-0 align-middle group-hover:[background-image:linear-gradient(hsl(var(--muted)/0.3),hsl(var(--muted)/0.3))]"
+                              className={cn(
+                                "sticky right-0 z-[1] h-[45px] border-l border-neutral-gray px-3 py-0 align-middle",
+                                cellGround(selected.includes(x.id), true)
+                              )}
                             >
                               <RowActions
                                 item={x}
