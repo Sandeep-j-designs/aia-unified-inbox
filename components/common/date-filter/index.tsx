@@ -25,7 +25,7 @@ export { FY_PRESETS };
  * https://ajaymon12.github.io/Bloocks-Design-system/?path=/docs/components-datefilter--docs
  *
  * A FilterChip trigger, so it sits beside the other chips and clears the same
- * way, over a panel of presets, typed From/To and a range calendar. The chip
+ * way, over a panel of presets and two months side by side. The chip
  * names a matching preset ("Received: This FY") and otherwise the dates.
  * onChange fires on Apply, or on the chip's × — never mid-pick.
  */
@@ -38,6 +38,7 @@ type Props = {
   presetsLabel?: string;
   /** Injectable so a demo or test can pin the date. */
   today?: Date;
+  minDate?: Date;
   maxDate?: Date;
   /** Set false for a filter that must always hold a range. */
   showClearButton?: boolean;
@@ -52,6 +53,7 @@ const DateFilter = ({
   presets = FY_PRESETS,
   presetsLabel = "Date range",
   today = new Date(),
+  minDate,
   maxDate,
   showClearButton = true,
   isDisabled = false,
@@ -83,6 +85,7 @@ const DateFilter = ({
             presets={presets}
             presetsLabel={presetsLabel}
             today={today}
+            minDate={minDate}
             maxDate={maxDate}
             onApply={(next) => {
               onChange(next);

@@ -1,5 +1,14 @@
-import React, { useRef, useState } from "react";
-import { isBefore } from "date-fns";
+import React, { useState } from "react";
+import {
+  addMonths,
+  endOfMonth,
+  format,
+  isAfter,
+  isBefore,
+  startOfDay,
+  startOfMonth,
+} from "date-fns";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -9,13 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import DateInput, {
-  EMPTY_SEGMENTS,
-  parseSegments,
-  toSegments,
-  type DateSegments,
-} from "./date-input";
+import { cn } from "@/lib/utils";
 import {
+  formatRange,
   matchPreset,
   sameRange,
   type DatePreset,
@@ -28,17 +33,24 @@ type Props = {
   presets: DatePreset[];
   presetsLabel: string;
   today: Date;
+  /** Days before this cannot be picked. */
+  minDate?: Date;
   /** Days after this cannot be picked, e.g. today for received documents. */
   maxDate?: Date;
 };
 
 const CUSTOM = "__custom";
 
+type Months = { left: Date; right: Date };
+
 /**
- * The DateFilter's panel. The typed fields are the draft: picking a preset or
- * two days on the calendar fills them, and nothing reaches the filter until
- * Apply — a range takes two clicks and a typed date is incomplete until its
- * last digit, so committing live would filter on half-entered input.
+ * The DateFilter's panel, after the Bloocks DateRangePanel: a preset dropdown
+ * over two months side by side, and Reset / Apply. The panel edits a draft and
+ * nothing reaches the filter until Apply, so a half-picked range never filters
+ * the list.
+ *
+ * One click picks a single day, which can be applied as is. A second click
+ * extends it into a range, and the band runs unbroken across the two months.
  */
 const DateRangePanel = ({
   value,
@@ -46,161 +58,159 @@ const DateRangePanel = ({
   presets,
   presetsLabel,
   today,
+  minDate,
   maxDate,
 }: Props) => {
-  const [fromSegments, setFromSegments] = useState<DateSegments>(() =>
-    toSegments(value.from)
-  );
-  const [toSegmentsValue, setToSegments] = useState<DateSegments>(() =>
-    toSegments(value.to)
-  );
-  const [month, setMonth] = useState<Date>(value.from ?? today);
-  const [custom, setCustom] = useState(false);
-  const fromRef = useRef<HTMLInputElement>(null);
-  /** Set when "Custom" is chosen: the select's close hands focus to From. */
-  const focusFrom = useRef(false);
+  /** A month with no pickable day in it, which navigation never lands on. */
+  const outOfBounds = (month: Date) =>
+    (!!maxDate && isAfter(month, startOfDay(maxDate))) ||
+    (!!minDate && isBefore(endOfMonth(month), startOfDay(minDate)));
 
-  const from = parseSegments(fromSegments);
-  const to = parseSegments(toSegmentsValue);
-  const inverted =
-    from.status === "valid" &&
-    to.status === "valid" &&
-    isBefore(to.date, from.date);
-
-  const fromError =
-    from.status === "invalid"
-      ? "That date doesn’t exist."
-      : from.status === "empty" && to.status !== "empty"
-        ? "Add a start date."
-        : undefined;
-  const toError =
-    to.status === "invalid"
-      ? "That date doesn’t exist."
-      : inverted
-        ? "Must be on or after the From date."
-        : undefined;
-
-  // The range the fields describe, when they describe one. A lone From is a
-  // one-day range; all-empty is "no date", which Apply can commit to clear.
-  const draft: DateRangeValue | null =
-    from.status === "empty" && to.status === "empty"
-      ? {}
-      : from.status === "valid" &&
-          (to.status === "valid" || to.status === "empty") &&
-          !inverted
-        ? {
-            from: from.date,
-            to: to.status === "valid" ? to.date : from.date,
-          }
-        : null;
-
-  const canApply = !!draft && !sameRange(draft, value);
-  const canReset =
-    Object.values(fromSegments).some(Boolean) ||
-    Object.values(toSegmentsValue).some(Boolean);
-
-  const preset = draft ? matchPreset(draft, presets, today) : undefined;
-  const presetValue =
-    custom || (!preset && canReset) ? CUSTOM : (preset?.label ?? "");
-
-  const setRange = (range: DateRangeValue) => {
-    setFromSegments(toSegments(range.from));
-    setToSegments(toSegments(range.to));
+  /**
+   * The months to open on: the range's first month on the left, and its last
+   * month (or the next one) on the right. When the right month is past
+   * maxDate, both step back one, so a filter capped at today opens on last
+   * month and this month rather than on an empty month.
+   */
+  const monthsFor = (range: DateRangeValue): Months => {
+    const left = startOfMonth(range.from ?? range.to ?? today);
+    const last = range.to ? startOfMonth(range.to) : left;
+    const right = isAfter(last, left) ? last : addMonths(left, 1);
+    if (outOfBounds(right) && !outOfBounds(addMonths(left, -1)))
+      return { left: addMonths(left, -1), right: left };
+    return { left, right };
   };
 
+  const [draft, setDraft] = useState<DateRangeValue>(value);
+  const [months, setMonths] = useState<Months>(() => monthsFor(value));
+  /** "Custom" chosen by hand: the dropdown keeps saying so even when the
+      picked days happen to equal a preset. */
+  const [custom, setCustom] = useState(false);
+
+  /**
+   * The months move independently but never show the same month: stepping one
+   * onto the other pushes the other along. Null when the step would land on a
+   * month with nothing pickable in it, which is what disables the arrow.
+   */
+  const step = (side: "left" | "right", by: number): Months | null => {
+    let { left, right } = months;
+    if (side === "left") {
+      left = addMonths(left, by);
+      if (!isBefore(left, right)) right = addMonths(left, 1);
+    } else {
+      right = addMonths(right, by);
+      if (!isAfter(right, left)) left = addMonths(right, -1);
+    }
+    return outOfBounds(left) || outOfBounds(right) ? null : { left, right };
+  };
+
+  const preset = custom ? undefined : matchPreset(draft, presets, today);
+  const customLabel = draft.from ? formatRange(draft) : "Custom";
+
+  const canApply = !sameRange(draft, value);
+  const canReset = !!draft.from;
+
+  const disabled = [
+    ...(minDate ? [{ before: startOfDay(minDate) }] : []),
+    ...(maxDate ? [{ after: startOfDay(maxDate) }] : []),
+  ];
+
   return (
-    <div className="flex w-[296px] flex-col">
-      <div className="flex flex-col gap-3 p-3 pb-0">
-        <label className="flex flex-col gap-1">
-          <span className="text-label-3 text-secondary-foreground">
-            {presetsLabel}
-          </span>
-          <Select
-            value={presetValue}
-            onValueChange={(next) => {
-              if (next === CUSTOM) {
-                setCustom(true);
-                focusFrom.current = true;
-                return;
-              }
-              const picked = presets.find((p) => p.label === next);
-              if (!picked) return;
-              const range = picked.getValue(today);
-              setCustom(false);
-              setRange(range);
-              setMonth(range.from);
-            }}
-          >
-            <SelectTrigger className="h-9 text-sm">
-              <SelectValue placeholder="Choose a range" />
-            </SelectTrigger>
-            <SelectContent
-              onCloseAutoFocus={(event) => {
-                if (!focusFrom.current) return;
-                // Custom puts the cursor in From instead of back on the select.
-                focusFrom.current = false;
-                event.preventDefault();
-                fromRef.current?.focus();
-              }}
-            >
-              {presets.map((p) => (
-                <SelectItem key={p.label} value={p.label}>
-                  {p.label}
-                </SelectItem>
-              ))}
-              <SelectItem value={CUSTOM}>Custom</SelectItem>
-            </SelectContent>
-          </Select>
-        </label>
-        <div className="flex items-start gap-2">
-          <DateInput
-            ref={fromRef}
-            label="From"
-            value={fromSegments}
-            error={fromError}
-            onChange={(next) => {
+    <div className="flex w-[604px] flex-col gap-2 p-4">
+      <label className="flex flex-col gap-1">
+        <span className="text-sm text-foreground">{presetsLabel}</span>
+        <Select
+          value={preset?.label ?? CUSTOM}
+          onValueChange={(next) => {
+            if (next === CUSTOM) {
               setCustom(true);
-              setFromSegments(next);
-              const parsed = parseSegments(next);
-              if (parsed.status === "valid") setMonth(parsed.date);
-            }}
-          />
-          <DateInput
-            label="To"
-            value={toSegmentsValue}
-            error={toError}
-            onChange={(next) => {
-              setCustom(true);
-              setToSegments(next);
-            }}
-          />
-        </div>
+              return;
+            }
+            const picked = presets.find((p) => p.label === next);
+            if (!picked) return;
+            const range = picked.getValue(today);
+            setCustom(false);
+            setDraft(range);
+            setMonths(monthsFor(range));
+          }}
+        >
+          <SelectTrigger className="h-[34px] text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {presets.map((p) => (
+              <SelectItem key={p.label} value={p.label}>
+                {p.label}
+              </SelectItem>
+            ))}
+            <SelectItem value={CUSTOM}>{customLabel}</SelectItem>
+          </SelectContent>
+        </Select>
+      </label>
+      <div className="flex items-start gap-3">
+        {(["left", "right"] as const).map((side) => {
+          const month = months[side];
+          const title = format(month, "MMMM yyyy");
+          const previous = step(side, -1);
+          const next = step(side, 1);
+          return (
+            <div key={side} className="flex w-[280px] shrink-0 flex-col gap-3">
+              <div className="flex h-[34px] items-center justify-between rounded-md border border-input bg-background px-2">
+                <MonthButton
+                  label={`Month before ${title}`}
+                  onClick={previous ? () => setMonths(previous) : undefined}
+                >
+                  <ChevronLeft className="size-4" aria-hidden />
+                </MonthButton>
+                <span aria-hidden className="text-sm font-medium text-foreground">
+                  {title}
+                </span>
+                <MonthButton
+                  label={`Month after ${title}`}
+                  onClick={next ? () => setMonths(next) : undefined}
+                >
+                  <ChevronRight className="size-4" aria-hidden />
+                </MonthButton>
+              </div>
+              <div className="min-h-[240px]">
+                <Calendar
+                  mode="range"
+                  month={month}
+                  disableNavigation
+                  // Neighbouring months' days are left empty, so a date never
+                  // appears in both grids.
+                  showOutsideDays={false}
+                  weekStartsOn={0}
+                  disabled={disabled}
+                  selected={
+                    draft.from ? { from: draft.from, to: draft.to } : undefined
+                  }
+                  onSelect={(range) => {
+                    setCustom(false);
+                    // The first click is a one-day range, so it can be
+                    // applied without a second click on the same day.
+                    setDraft(
+                      range?.from
+                        ? { from: range.from, to: range.to ?? range.from }
+                        : {}
+                    );
+                  }}
+                  className="w-full p-0"
+                  classNames={dayGrid}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
-      <Calendar
-        mode="range"
-        month={month}
-        onMonthChange={setMonth}
-        // Month and year open as dropdowns, to jump rather than page.
-        captionLayout="dropdown-buttons"
-        fromYear={today.getFullYear() - 10}
-        toYear={today.getFullYear()}
-        disabled={maxDate ? { after: maxDate } : undefined}
-        selected={draft?.from ? { from: draft.from, to: draft.to } : undefined}
-        onSelect={(range) => {
-          setCustom(false);
-          setRange({ from: range?.from, to: range?.to });
-        }}
-        className="self-center"
-      />
-      <div className="flex items-center justify-end gap-2 border-t border-neutral-gray px-3 py-2">
+      <div className="flex items-center justify-end gap-2 pt-1">
         <Button
           variant="ghost"
           size="sm"
           isDestructive
           disabled={!canReset}
           onClick={() => {
-            setFromSegments(EMPTY_SEGMENTS);
-            setToSegments(EMPTY_SEGMENTS);
+            setDraft({});
             setCustom(false);
           }}
         >
@@ -210,13 +220,69 @@ const DateRangePanel = ({
           size="sm"
           className="w-[78px]"
           disabled={!canApply}
-          onClick={() => draft && onApply(draft)}
+          onClick={() => onApply(draft)}
         >
           Apply
         </Button>
       </div>
     </div>
   );
+};
+
+const MonthButton = ({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) => (
+  <button
+    type="button"
+    aria-label={label}
+    disabled={!onClick}
+    onClick={onClick}
+    className="inline-flex size-6 items-center justify-center rounded-md text-secondary-foreground hover:bg-neutral-gray hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+  >
+    {children}
+  </button>
+);
+
+/**
+ * Bloocks' day grid on react-day-picker 8: 28px round days in 40px rows, and a
+ * grey band across a range. The band is painted on the cell, not the day, so
+ * it runs edge to edge between days while the ends stay round and filled.
+ */
+const dayGrid = {
+  months: "w-full",
+  month: "w-full",
+  // The month bar above names the month; the grid keeps its caption only as
+  // its accessible name.
+  caption: "sr-only",
+  table: "w-full border-collapse",
+  head_row: "flex w-full",
+  head_cell:
+    "flex h-6 flex-1 items-center justify-center text-xs font-normal text-primary",
+  tbody: "flex flex-col gap-1",
+  row: "flex w-full",
+  cell: cn(
+    "flex h-10 flex-1 items-center justify-center p-0",
+    "[&:has(.day-range-middle)]:bg-neutral-gray",
+    "[&:has(.day-range-start)]:rounded-l-md [&:has(.day-range-start)]:bg-neutral-gray",
+    "[&:has(.day-range-end)]:rounded-r-md [&:has(.day-range-end)]:bg-neutral-gray"
+  ),
+  day: "size-7 rounded-full text-xs tabular-nums text-foreground hover:bg-neutral-gray focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed",
+  day_selected: "bg-primary text-primary-foreground hover:bg-primary-hover",
+  day_range_start: "day-range-start",
+  day_range_end: "day-range-end",
+  day_range_middle:
+    "day-range-middle !bg-transparent !text-foreground hover:!bg-border",
+  day_today: "",
+  day_outside: "invisible",
+  day_disabled:
+    "cursor-not-allowed text-secondary-foreground opacity-30 hover:bg-transparent",
+  day_hidden: "invisible",
 };
 
 export default DateRangePanel;

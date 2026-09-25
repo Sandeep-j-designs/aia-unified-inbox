@@ -118,7 +118,7 @@ export const matchPreset = (
     : undefined;
 
 /**
- * "12 Sep 2026", "1–15 Sep 2026", "28 Aug – 3 Sep 2026",
+ * "12 Sep 2026", "1 – 15 Sep 2026", "28 Aug – 3 Sep 2026",
  * "28 Dec 2025 – 3 Jan 2026": a range keeps both months across a month
  * boundary and both years across a year.
  */
@@ -129,5 +129,5 @@ export const formatRange = ({ from, to }: DateRangeValue) => {
     return `${format(from, "d MMM yyyy")} – ${format(to, "d MMM yyyy")}`;
   if (!isSameMonth(from, to))
     return `${format(from, "d MMM")} – ${format(to, "d MMM yyyy")}`;
-  return `${format(from, "d")}–${format(to, "d MMM yyyy")}`;
+  return `${format(from, "d")} – ${format(to, "d MMM yyyy")}`;
 };
