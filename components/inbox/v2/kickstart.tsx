@@ -38,6 +38,8 @@ export type Arrivals = {
   whatsapp: number;
   /** The phone number registered with the WhatsApp bot. */
   whatsappNumber?: string;
+  /** AI Accountant's WhatsApp number, where that phone sends its bills. */
+  botNumber?: string;
 };
 
 type Props = {
@@ -47,6 +49,8 @@ type Props = {
   onUpload: (files?: FileList) => void;
   onWhatsApp: () => void;
   onCopy: () => Promise<boolean>;
+  /** Copy AI Accountant's WhatsApp number. Connected state only. */
+  onCopyNumber?: () => Promise<boolean>;
   arrivals?: Arrivals;
   /** Close the welcome on the Needs review queue. Arrivals only. */
   onReview?: () => void;
@@ -129,6 +133,7 @@ export default function InboxKickstart({
   onUpload,
   onWhatsApp,
   onCopy,
+  onCopyNumber,
   arrivals,
   onReview,
   onTour,
@@ -138,6 +143,7 @@ export default function InboxKickstart({
   const waiting = !!arrivals?.total;
   const connected = !!arrivals?.whatsapp;
   const [copied, setCopied] = useState(false);
+  const [numberCopied, setNumberCopied] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [step, setStep] = useState(0);
   useEffect(() => {
@@ -154,6 +160,11 @@ export default function InboxKickstart({
     const timer = window.setTimeout(() => setCopied(false), 2500);
     return () => window.clearTimeout(timer);
   }, [copied]);
+  useEffect(() => {
+    if (!numberCopied) return;
+    const timer = window.setTimeout(() => setNumberCopied(false), 2500);
+    return () => window.clearTimeout(timer);
+  }, [numberCopied]);
   const selectStep = (index: number) => {
     setStep(index);
   };
@@ -394,10 +405,36 @@ export default function InboxKickstart({
                 <MessageCircle size={23} aria-hidden />
               </span>
               <div className={s.channelText}>
-                <h4>{connected ? "WhatsApp connected" : "Send on WhatsApp"}</h4>
+                <h4>{connected ? "Forward on WhatsApp" : "Send on WhatsApp"}</h4>
+                {/* Where to send leads; the registered phone follows as the
+                    reminder of which phone the bot listens to. */}
+                {connected && arrivals.botNumber && (
+                  <p className={s.sendTo}>
+                    Send to <strong>{arrivals.botNumber}</strong>
+                    {onCopyNumber && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={
+                          numberCopied
+                            ? "WhatsApp number copied"
+                            : "Copy AI Accountant WhatsApp number"
+                        }
+                        onClick={async () =>
+                          setNumberCopied(await onCopyNumber())
+                        }
+                      >
+                        {numberCopied ? <Check /> : <Copy />}
+                      </Button>
+                    )}
+                    <span className="sr-only" role="status">
+                      {numberCopied ? "Number copied" : ""}
+                    </span>
+                  </p>
+                )}
                 {connected && arrivals.whatsappNumber && (
                   <p className={s.registeredNumber}>
-                    Registered number{" "}
+                    From your number{" "}
                     <strong>{arrivals.whatsappNumber}</strong>
                   </p>
                 )}

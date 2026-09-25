@@ -812,8 +812,27 @@
   gap: 16px;
   margin-top: 32px;
 }
-.registeredNumber {
+.channelText .sendTo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-ink);
+}
+.sendTo strong {
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.sendTo button {
+  flex-shrink: 0;
+  margin-block: -6px;
+  color: var(--palette-green-700);
+}
+.registeredNumber {
+  margin: 0;
   font-size: 12px;
   line-height: 1.5;
   color: var(--muted-ink);

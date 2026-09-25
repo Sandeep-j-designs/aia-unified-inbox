@@ -181,6 +181,7 @@ import {
   NEW_TAG_DAYS,
   applyScenario,
   REGISTERED_WHATSAPP,
+  AIA_WHATSAPP,
   type Scenario,
 } from "./store";
 import { useTallySync } from "@/hooks/pages/inbox/use-tally-sync";
@@ -1454,6 +1455,7 @@ export default function Workspace() {
       ready: queue.filter((x) => x.status === "Needs Review").length,
       whatsapp: queue.filter((x) => x.source === "whatsapp").length,
       whatsappNumber: REGISTERED_WHATSAPP,
+      botNumber: AIA_WHATSAPP,
     };
   }, [all]);
   /**
@@ -5476,6 +5478,21 @@ export default function Workspace() {
           } catch {
             notify(
               "Couldn’t copy the address. Select it and copy manually.",
+              "error"
+            );
+            return false;
+          }
+        }}
+        onCopyNumber={async () => {
+          try {
+            await navigator.clipboard.writeText(AIA_WHATSAPP);
+            notify(
+              "WhatsApp number copied. Send your bills to it from your registered phone."
+            );
+            return true;
+          } catch {
+            notify(
+              "Couldn’t copy the number. Select it and copy manually.",
               "error"
             );
             return false;

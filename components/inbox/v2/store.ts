@@ -498,6 +498,11 @@ const WHATSAPP_BACKLOG = 18;
  */
 export const REGISTERED_WHATSAPP = "+91 98450 12342";
 /**
+ * AI Accountant's own WhatsApp number — where the registered phone sends its
+ * bills. Placeholder until the real number is confirmed.
+ */
+export const AIA_WHATSAPP = "+91 80000 00000";
+/**
  * Whoever sent them. The registered number sends most of them; the rest are
  * teammates on the same account, reused.
  */
