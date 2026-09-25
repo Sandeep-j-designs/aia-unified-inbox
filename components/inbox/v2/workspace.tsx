@@ -1439,9 +1439,6 @@ export default function Workspace() {
     return {
       total: queue.length,
       ready: queue.filter((x) => x.status === "Needs Review").length,
-      reading: queue.filter((x) =>
-        ["Received", "Extracting"].includes(x.status)
-      ).length,
       whatsapp: queue.filter((x) => x.source === "whatsapp").length,
       whatsappNumber: REGISTERED_WHATSAPP,
     };

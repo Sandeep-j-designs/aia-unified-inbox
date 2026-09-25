@@ -34,8 +34,6 @@ export type Arrivals = {
   total: number;
   /** Ready for review now. */
   ready: number;
-  /** Still being read. */
-  reading: number;
   /** How many of them came in on WhatsApp. */
   whatsapp: number;
   /** The phone number registered with the WhatsApp bot. */
@@ -433,11 +431,6 @@ export default function InboxKickstart({
                 </Button>
               )}
               <div className={s.footerEnd}>
-                {waiting && !!arrivals.reading && (
-                  <span className={s.readingNote} role="status">
-                    {arrivals.reading} still being read
-                  </span>
-                )}
                 {waiting && onReview ? (
                   <Button className={s.reviewButton} onClick={onReview}>
                     {arrivals.ready

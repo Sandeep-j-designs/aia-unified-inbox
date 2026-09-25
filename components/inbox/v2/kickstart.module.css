@@ -836,11 +836,6 @@
   color: var(--palette-blue-700);
   font-size: 14px;
 }
-.readingNote {
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--muted-ink);
-}
 .reviewButton {
   gap: 8px;
   /* Bloocks md: 36px tall, 12px sides — the same size as every other
