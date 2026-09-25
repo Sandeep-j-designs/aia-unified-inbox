@@ -147,7 +147,7 @@ export const StatusPill = ({
 
 /** A count chip on a tab or nav item. */
 export const CountPill = ({ children }: { children: React.ReactNode }) => (
-  <Pill tone="info" className="min-w-[20px] rounded-full px-2 py-0.5 text-label-3 font-semibold justify-center tabular-nums">
+  <Pill tone="info" size="sm" className="min-w-5 justify-center tabular-nums">
     {children}
   </Pill>
 );

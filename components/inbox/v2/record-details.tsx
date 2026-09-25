@@ -1,5 +1,6 @@
 import React from "react";
 import { Check, Copy, FileText, Lock, ShieldCheck } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Item, routeNames } from "./store";
 
@@ -56,17 +57,13 @@ export function RecordBanner({
       <div className="min-w-0 flex-1 basis-80">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
-              success
-                ? "bg-success-green text-success-green-foreground"
-                : "bg-warning text-warning-foreground"
-            )}
+          <Badge
+            color={success ? "positive" : "notice"}
+            size="md"
+            icon={<Lock className="size-3" aria-hidden />}
           >
-            <Lock className="h-3 w-3" aria-hidden />
             {label}
-          </span>
+          </Badge>
         </div>
         <div className="mt-1 text-xs leading-5 text-secondary-foreground">
           {children}

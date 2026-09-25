@@ -1,6 +1,7 @@
 import React from "react";
 import { CircleCheck, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RunCount, RunRowList } from "@/components/inbox/v2/progress-run";
 import type { RunRow } from "@/components/inbox/v2/progress-run";
@@ -129,10 +130,17 @@ const SyncProgressModal = ({
       >
         <div className="flex items-center justify-between border-b border-neutral-gray px-5 py-4">
           <DialogTitle className="text-lg">Syncing to Tally</DialogTitle>
-          <span className="flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-primary">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+          <Badge
+            color="information"
+            icon={
+              <Loader2
+                aria-hidden
+                className="size-2.5 animate-spin motion-reduce:animate-none"
+              />
+            }
+          >
             Syncing
-          </span>
+          </Badge>
         </div>
 
         <div className="space-y-4 px-5 py-4">

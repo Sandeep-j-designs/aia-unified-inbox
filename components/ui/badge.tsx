@@ -38,7 +38,7 @@ const badgeVariants = cva(
 
 export interface BadgeProps
   extends
-    React.HTMLAttributes<HTMLDivElement>,
+    React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {
   color?:
     "neutral" | "primary" | "positive" | "negative" | "notice" | "information";
@@ -72,7 +72,7 @@ function Badge({
 }: BadgeProps) {
   const label = labelText(children);
   return (
-    <div
+    <span
       className={cn(
         badgeVariants({ variant: color ?? variant, size }),
         className
@@ -92,7 +92,7 @@ function Badge({
       >
         {children}
       </span>
-    </div>
+    </span>
   );
 }
 

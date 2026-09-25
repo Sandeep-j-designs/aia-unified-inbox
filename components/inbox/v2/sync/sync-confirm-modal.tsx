@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SYNC_MASTERS_NOTE } from "@/config/pages/inbox/sync";
@@ -88,16 +89,13 @@ const ModuleCard = ({
       <span className="flex-1 truncate text-sm font-medium text-foreground">
         {module.label}
       </span>
-      <span
-        className={cn(
-          "flex-none rounded-full px-2 py-0.5 text-xs tabular-nums",
-          checked
-            ? "bg-primary/10 text-primary"
-            : "bg-section text-secondary-foreground"
-        )}
+      <Badge
+        color={checked ? "primary" : "neutral"}
+        size="md"
+        className="flex-none tabular-nums"
       >
         {module.count} item{module.count === 1 ? "" : "s"}
-      </span>
+      </Badge>
     </button>
   );
 };
